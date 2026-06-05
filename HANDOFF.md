@@ -15,13 +15,8 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M3 — FasterWhisperEngine + STT API** | ✅ | `2271e78` |
 | **M4 — OpenAICompatibleAnalyzer + анализ + scoring + API** | ✅ | `2cca3d6` |
 | **M5 — Auth (JWT) + UI (Next.js + Mantine)** | ✅ | `9ce778c` |
-| **M6 — Админка: менеджеры, скрипты, дневная сводка** | ⚠️ готов, **НЕ закоммичен** | — |
+| **M6 — Админка: менеджеры, скрипты, дневная сводка** | ✅ | `a10c5e0` |
 | M7–M10 | Не начато | — |
-
-> ⚠️ **M6 ещё в рабочем дереве** (см. `git status`). Перед началом M7 — закоммитить M6.
-> Новые файлы: `app/api/{admin,managers,scripts}.py`, `app/services/{daily_summary,process,scripts}.py`,
-> `app/db/repositories/script_repo.py`, миграция `m6schema`, `frontend/src/app/admin/{managers,scripts,summary}/`
-> и соответствующие тесты (backend + frontend).
 
 **Тесты на текущий момент: 356 backend + 34 frontend** — зелёные; ruff + mypy --strict (80 файлов) — зелёные.
 
@@ -105,8 +100,7 @@ docs/
 
 ## 5. Следующий шаг — M7
 
-1. **Закоммитить M6** (сейчас в рабочем дереве).
-2. **Запустить агента:** `Реализуй milestone M7 по промпту docs/dev/implement-milestone.md`
+**Запустить агента:** `Реализуй milestone M7 по промпту docs/dev/implement-milestone.md`
 
 M7 — **MicSource near-realtime** (микрофон → WebSocket → пайплайн).
 Детали: `docs/dev/tasks/M7-micsource-realtime.md`.
