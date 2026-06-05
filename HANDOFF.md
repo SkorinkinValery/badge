@@ -16,31 +16,33 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M4 — OpenAICompatibleAnalyzer + анализ + scoring + API** | ✅ | `2cca3d6` |
 | **M5 — Auth (JWT) + UI (Next.js + Mantine)** | ✅ | `9ce778c` |
 | **M6 — Админка: менеджеры, скрипты, дневная сводка** | ✅ | `a10c5e0` |
-| M7–M10 | Не начато | — |
+| **M7 — MicSource near-realtime** | ✅ | текущий |
+| M8–M10 | Не начато | — |
 
-**Тесты на текущий момент: 356 backend + 34 frontend** — зелёные; ruff + mypy --strict (80 файлов) — зелёные.
+**Тесты на текущий момент: 439 backend + 44 frontend** — зелёные; ruff + mypy --strict — зелёные.
 
-### Что сделано в M6 (последний milestone)
-- **Менеджеры** — CRUD (`app/api/managers.py`): admin-only create/update/delete, any-user list/get, soft-delete, уникальность `device_id`.
-- **Скрипты** — загрузка txt/md с версионированием и выбором активной версии (`app/api/scripts.py`, `app/services/scripts.py`, `app/db/repositories/script_repo.py`).
-- **Резолвер режима анализа** — `resolve_analysis_mode` (baseline vs script по активному скрипту менеджера, `script_version_id` для воспроизводимости) — `app/services/process.py`.
-- **Дневная сводка** — агрегация кол-ва/длительности/балла/KPI-статистики/нарушений/топ-проблем — `app/services/daily_summary.py`, `app/api/admin.py`.
-- **UI** (`frontend/src/app/admin/`) — страницы `managers/`, `scripts/`, `summary/` с auth guard.
-- **Схема БД** — миграция `m6schema`: `script.active_version_id` (UUID, nullable), `recording.duration_seconds` (Float, nullable). Новых зависимостей нет.
+### Что сделано в M7 (последний milestone)
+- **Протокол WS** — Pydantic-DTO (`start`/`chunk`/`stop`/`ack`/`partial_transcript`/`error`), `SessionProtocol` (монотонность seq, порядок), `parse_client_msg` — `app/adapters/audio/mic_protocol.py`.
+- **Буфер чанков** — `ChunkBuffer` (оконная агрегация config-driven, backpressure, дубликаты seq) — `app/services/mic_buffer.py`.
+- **MicSource** — адаптер `AudioSource` для микрофонного ввода, проходит контракт наравне с `FileSource` — `app/adapters/audio/mic_source.py`.
+- **WS-эндпоинт** — `WS /api/ws/mic` (JWT через query param, `consent_flag` обязателен, near-realtime STT через StubSTTEngine/config, запись в БД, статус QUEUED после `stop`) — `app/api/ws_mic.py`.
+- **Settings** — добавлены `mic_window_bytes`, `mic_max_bytes` (алиасы `MIC_WINDOW_BYTES`, `MIC_MAX_BYTES`).
+- **UI** — `frontend/src/app/recordings/record/page.tsx` (выбор менеджера, согласие, старт/стоп, near-realtime транскрипт), `frontend/src/lib/ws.ts` (`useRecordWs` hook).
 
-### Сжатый журнал M1–M5
-- **M1** — `core/domain` (Recording, Transcript, Analysis, Manager, Script, User, enums), `core/ports` (AudioSource, STTEngine, Analyzer, CRMExporter + DTO), `core/pipeline` (state/nodes/graph на LangGraph), стаб-адаптеры, baseline-миграция.
-- **M2** — `services/storage.py` (S3/boto3), `services/ingest.py` (валидация magic-bytes/ext/size), `services/normalize.py` (ffmpeg 16 kHz mono), `adapters/audio/file_source.py`, `api/uploads.py` + `api/recordings.py`.
-- **M3** — `adapters/stt/` (`faster_whisper_engine.py` с lazy-singleton, `config.py`, `mapping.py`), DI STTEngine в узел `transcribing`, `GET /api/recordings/{id}/transcript`.
-- **M4** — `adapters/analyzer/` (`openai_compatible.py`, `schema.py` динамический Pydantic, `prompt.py`), `services/score.py` (нормализация весов), узлы `analyzing`/`scoring`/`exporting`, `GET`/`PATCH /api/recordings/{id}/analysis` (`auto_score` + `corrected_by`).
-- **M5** — `services/auth.py` (argon2, `UserRole`, `seed_admin_if_missing`), `api/auth.py` (login → JWT), `api/deps.py` (`require_role`, guards на всех роутах), Next.js 14 App Router + Mantine v7, страницы логина / списка записей / карточки записи / формы коррекции балла.
+### Сжатый журнал M1–M6
+- **M1** — `core/domain`, `core/ports`, `core/pipeline` (LangGraph), стаб-адаптеры.
+- **M2** — `services/storage.py`, `services/ingest.py`, `services/normalize.py`, `adapters/audio/file_source.py`, `api/uploads.py` + `api/recordings.py`.
+- **M3** — `adapters/stt/faster_whisper_engine.py`, DI STTEngine, `GET /api/recordings/{id}/transcript`.
+- **M4** — `adapters/analyzer/openai_compatible.py`, `services/score.py`, узлы `analyzing`/`scoring`/`exporting`, `GET`/`PATCH /api/recordings/{id}/analysis`.
+- **M5** — `services/auth.py` (argon2, JWT), `api/auth.py`, `api/deps.py`, Next.js 14 App Router + Mantine v7.
+- **M6** — `api/managers.py`, `api/scripts.py`, `services/scripts.py`, `services/daily_summary.py`, `api/admin.py`, UI admin pages, миграция `m6schema`.
 
 ### Добавленные зависимости (накопительно)
 - **M2:** `boto3`, `types-boto3`, `python-magic`
 - **M3:** `faster-whisper>=1.2.1`
 - **M5 backend:** `argon2-cffi>=23.1`, `python-jose[cryptography]>=3.3`, `types-python-jose`
 - **M5 frontend:** Next.js 14, Mantine v7, Vitest 1.x, @testing-library/react
-- **M4/M6:** новых зависимостей нет
+- **M4/M6/M7:** новых зависимостей нет
 
 ## 3. Ключевые технологические решения
 
@@ -53,9 +55,12 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **БД** | PostgreSQL + SQLAlchemy 2.0 + Alembic | — |
 | **Хранилище аудио** | MinIO (S3-совместимое, self-host) | — |
 | **Фронтенд** | Next.js (App Router) + Mantine | — |
+| **Микрофон** | MediaRecorder → WebSocket → ChunkBuffer → near-realtime STT | — |
 
 **Сквозной принцип:** каждый провайдер (LLM/STT/CRM) — сменный адаптер за портом;
 смена = только конфиг (`base_url`/`model`/`api_key`/выбор адаптера), никаких правок кода.
+
+**WS-auth:** JWT передаётся query-param `?token=...` (браузер не поддерживает `Authorization` header для WS).
 
 **Чего НЕ делать:**
 - Платные STT (Deepgram/AssemblyAI) — не основной путь, только опция
@@ -72,11 +77,11 @@ backend/app/
     ports/      # AudioSource, STTEngine, Analyzer, CRMExporter + DTO
     pipeline/   # state.py, nodes.py, graph.py (LangGraph)
   adapters/
-    audio/      # file_stub, file_source, badge_source, telephony_source
+    audio/      # file_stub, file_source, badge_source, telephony_source, mic_source, mic_protocol
     stt/        # stub_stt, faster_whisper_engine, config, mapping
     analyzer/   # stub_analyzer, openai_compatible, schema, prompt
     crm/        # json_exporter
-  services/     # storage, ingest, normalize, score, auth, scripts, process, daily_summary
+  services/     # storage, ingest, normalize, score, auth, scripts, process, daily_summary, mic_buffer
   db/
     models/         # analysis, recording, transcript, manager, script, user
     repositories/   # manager_repo, recording_repo, script_repo
@@ -84,12 +89,12 @@ backend/app/
     session.py
   workers/      # runner.py (run_job)
   config/       # settings.py, kpi.py
-  api/          # health, auth, deps, uploads, recordings, managers, scripts, admin
+  api/          # health, auth, deps, uploads, recordings, managers, scripts, admin, ws_mic
   main.py
 backend/tests/  # unit/ contract/ integration/ api/ config/ infra/ db/ adapters/ core/ services/ workers/
 frontend/src/
-  app/          # login, recordings, recordings/[id], admin/{managers,scripts,summary}
-  lib/          # auth.ts (sessionStorage), api.ts
+  app/          # login, recordings, recordings/[id], recordings/record, admin/{managers,scripts,summary}
+  lib/          # auth.ts (sessionStorage), api.ts, ws.ts (useRecordWs hook)
   test/         # Vitest + @testing-library
 infra/
   docker-compose.yml
@@ -98,17 +103,16 @@ docs/
   PLAN.md  TZ-audiobadge-mvp.md  dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M7
+## 5. Следующий шаг — M8
 
-**Запустить агента:** `Реализуй milestone M7 по промпту docs/dev/implement-milestone.md`
+**Запустить агента:** `Реализуй milestone M8 по промпту docs/dev/implement-milestone.md`
 
-M7 — **MicSource near-realtime** (микрофон → WebSocket → пайплайн).
-Детали: `docs/dev/tasks/M7-micsource-realtime.md`.
+M8 — **Экспорт результатов** (`GoogleSheetsExporter` → `GenericWebhookExporter` → `Bitrix24Exporter`).
+Детали: `docs/dev/tasks/M8-export-sheets.md`.
 
-**Перед M7 поднять окружение:**
-1. MinIO + Postgres: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
-2. `LLM_API_KEY` в env (для тестов с реальным LLM; unit-тесты работают без ключа)
-3. Frontend-тесты: `cd frontend && npm test`
+**Перед M8:**
+- Нужен Google-аккаунт / сервисный аккаунт + ID таблицы (см. открытые вопросы п.2).
+- Поднять окружение: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
 
 ## 6. Команды разработки
 
@@ -153,3 +157,4 @@ cd frontend && npm test
 - STT self-host с самого начала (аудио не покидает периметр).
 - LLM облако (`gpt-4o-mini`) — на пилотных/обезличенных данных с согласием; full self-host vLLM/Qwen — целевое решение (M9).
 - РФ — надлежащая юрисдикция (RU-облако как fallback допустимо).
+- WS-захват: `consent_flag=true` обязателен в `start`-сообщении; запись создаётся только при согласии.

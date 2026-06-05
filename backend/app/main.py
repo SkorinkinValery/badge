@@ -60,12 +60,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.api.recordings import router as recordings_router
     from app.api.scripts import router as scripts_router
     from app.api.uploads import router as uploads_router
+    from app.api.ws_mic import router as ws_mic_router
     app.include_router(auth_router)
     app.include_router(uploads_router)
     app.include_router(recordings_router)
     app.include_router(managers_router)
     app.include_router(scripts_router)
     app.include_router(admin_router)
+    app.include_router(ws_mic_router)
 
     return app
 

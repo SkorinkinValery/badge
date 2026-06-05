@@ -28,7 +28,6 @@ def _try_file_source() -> tuple[str, AudioSource] | None:
     endpoint = os.environ.get("MINIO_ENDPOINT", "http://localhost:9000")
     try:
         import boto3
-        import botocore
         client = boto3.client(
             "s3",
             endpoint_url=endpoint,
@@ -70,6 +69,18 @@ def _try_file_source() -> tuple[str, AudioSource] | None:
     return ("FileSource", src)
 
 
+def _make_mic_source() -> tuple[str, AudioSource]:
+    import uuid
+
+    from app.adapters.audio.mic_source import MicSource
+    src = MicSource(
+        audio_data=_make_wav_bytes(),
+        manager_id=uuid.uuid4(),
+        consent_flag=True,
+    )
+    return ("MicSource", src)
+
+
 def get_audio_source_impls() -> list[tuple[str, AudioSource]]:
     impls: list[tuple[str, AudioSource]] = []
     try:
@@ -80,6 +91,7 @@ def get_audio_source_impls() -> list[tuple[str, AudioSource]]:
     fs = _try_file_source()
     if fs:
         impls.append(fs)
+    impls.append(_make_mic_source())
     return impls
 
 

@@ -83,6 +83,10 @@ class Settings(BaseSettings):
         alias="PROVIDERS_YAML_PATH",
     )
 
+    # Mic WebSocket buffer settings
+    mic_window_bytes: int = Field(default=32_000, alias="MIC_WINDOW_BYTES")
+    mic_max_bytes: int = Field(default=10_485_760, alias="MIC_MAX_BYTES")
+
     model_config = {"populate_by_name": True, "extra": "ignore"}
 
 
