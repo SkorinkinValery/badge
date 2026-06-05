@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.analysis import AnalysisModel
 from app.db.models.recording import RecordingModel
 from app.db.models.transcript import TranscriptModel
 from app.db.session import get_session
@@ -43,6 +44,23 @@ class TranscriptOut(BaseModel):
     detected_language: str
 
 
+class AnalysisOut(BaseModel):
+    recording_id: uuid.UUID
+    summary: str
+    kpi_json: dict[str, Any]
+    score: float | None
+    auto_score: float | None
+    verdict: str | None
+    mode: str
+    weights_version: str | None
+
+
+class AnalysisPatchIn(BaseModel):
+    score: float | None = None
+    verdict: str | None = None
+    corrected_by: str | None = None
+
+
 @router.get("", response_model=list[RecordingOut])
 async def list_recordings(
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -55,6 +73,68 @@ async def list_recordings(
     result = await session.execute(stmt)
     rows = result.scalars().all()
     return [RecordingOut.model_validate(r, from_attributes=True) for r in rows]
+
+
+@router.get("/{recording_id}/analysis", response_model=AnalysisOut)
+async def get_analysis(
+    recording_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AnalysisOut:
+    result = await session.execute(
+        select(AnalysisModel).where(AnalysisModel.recording_id == recording_id)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    return AnalysisOut(
+        recording_id=recording_id,
+        summary=row.summary or "",
+        kpi_json=row.kpi_json or {},
+        score=row.score,
+        auto_score=row.auto_score if row.auto_score is not None else row.score,
+        verdict=row.verdict,
+        mode=row.mode,
+        weights_version=row.weights_version,
+    )
+
+
+@router.patch("/{recording_id}/analysis", response_model=AnalysisOut)
+async def patch_analysis(
+    recording_id: uuid.UUID,
+    body: AnalysisPatchIn,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AnalysisOut:
+    result = await session.execute(
+        select(AnalysisModel).where(AnalysisModel.recording_id == recording_id)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+
+    # Preserve original auto_score before first manual correction
+    if row.auto_score is None:
+        row.auto_score = row.score
+
+    if body.score is not None:
+        row.score = body.score
+    if body.verdict is not None:
+        row.verdict = body.verdict
+    if body.corrected_by is not None:
+        row.corrected_by = body.corrected_by
+
+    await session.commit()
+    await session.refresh(row)
+
+    return AnalysisOut(
+        recording_id=recording_id,
+        summary=row.summary or "",
+        kpi_json=row.kpi_json or {},
+        score=row.score,
+        auto_score=row.auto_score,
+        verdict=row.verdict,
+        mode=row.mode,
+        weights_version=row.weights_version,
+    )
 
 
 @router.get("/{recording_id}/transcript", response_model=TranscriptOut)

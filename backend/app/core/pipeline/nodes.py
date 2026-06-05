@@ -12,6 +12,7 @@ import structlog
 
 from app.core.domain.enums import RecordingStatus
 from app.core.pipeline.state import PipelineState
+from app.core.ports.analyzer import Analyzer
 from app.core.ports.stt_engine import STTEngine
 
 log = structlog.get_logger()
@@ -38,6 +39,7 @@ def _patch(state: PipelineState, **updates: Any) -> PipelineState:
 def make_nodes(
     fail_at_stage: str | None = None,
     stt_engine: STTEngine | None = None,
+    analyzer: Analyzer | None = None,
 ) -> dict[str, NodeFn]:
     """Return a dict of stage node callables, optionally injecting a failure."""
 
@@ -118,10 +120,17 @@ def make_nodes(
             return _fail_state(state, "analyzing")
         import uuid
 
-        from app.adapters.analyzer.stub_analyzer import StubAnalyzer
         from app.core.domain.transcript import Segment, Transcript
 
         log.info("stage.started", stage="analyzing")
+
+        _analyzer: Analyzer
+        if analyzer is not None:
+            _analyzer = analyzer
+        else:
+            from app.adapters.analyzer.stub_analyzer import StubAnalyzer
+            _analyzer = StubAnalyzer()
+
         t_data: dict[str, Any] = state.get("transcript") or {}
         raw_segs: list[dict[str, Any]] = t_data.get("segments") or [
             {"start": 0.0, "end": 1.0, "text": ""}
@@ -136,7 +145,13 @@ def make_nodes(
             segments=segments,
             detected_language=t_data.get("detected_language") or "ru",
         )
-        result = StubAnalyzer().analyze(transcript)
+
+        try:
+            result = _analyzer.analyze(transcript)
+        except Exception as exc:
+            log.error("stage.analyzer.error", error=str(exc))
+            return _fail_state(state, "analyzing", error=f"Analyzer error: {exc}")
+
         log.info("stage.done", stage="analyzing")
         return _patch(
             state,
@@ -144,6 +159,8 @@ def make_nodes(
             analysis_result={
                 "summary": result.summary,
                 "kpi_json": result.kpi_json,
+                "mode": "baseline",
+                "weights_version": None,
             },
         )
 
@@ -151,31 +168,26 @@ def make_nodes(
         if fail_at_stage == "scoring":
             return _fail_state(state, "scoring")
         from app.config.kpi import load_kpi_config, load_weights_config
+        from app.services.score import compute_score
 
         log.info("stage.started", stage="scoring")
         ar: dict[str, Any] = state.get("analysis_result") or {}
-        kpi_json: dict[str, float] = ar.get("kpi_json") or {}
+        kpi_json: dict[str, Any] = ar.get("kpi_json") or {}
         cfg = load_kpi_config()
         weights_cfg = load_weights_config()
 
-        total_weight = sum(
-            weights_cfg.weights.get(k.id, k.weight)
-            for k in cfg.kpis
-            if k.id in kpi_json and k.include_in_score
-        )
-        if total_weight == 0:
-            score = 0.0
-        else:
-            weighted_sum = sum(
-                float(kpi_json[k.id]) * weights_cfg.weights.get(k.id, k.weight)
-                for k in cfg.kpis
-                if k.id in kpi_json and k.include_in_score
-            )
-            score = round((weighted_sum / total_weight / 10.0) * 100, 2)
+        score, verdict = compute_score(kpi_json, cfg, weights_cfg)
+        weights_version = f"v{sum(weights_cfg.weights.values()):.2f}"
 
-        verdict = "+" if score >= 80 else ("~" if score >= 50 else "-")
-        log.info("stage.done", stage="scoring")
-        return _patch(state, status=RecordingStatus.SCORING.value, score=score, verdict=verdict)
+        log.info("stage.done", stage="scoring", score=score, verdict=verdict)
+        updated_ar = {**ar, "weights_version": weights_version}
+        return _patch(
+            state,
+            status=RecordingStatus.SCORING.value,
+            score=score,
+            verdict=verdict,
+            analysis_result=updated_ar,
+        )
 
     def exporting(state: PipelineState) -> PipelineState:
         if fail_at_stage == "exporting":
@@ -204,7 +216,12 @@ def make_nodes(
             summary=ar.get("summary") or "",
             kpi_json=ar.get("kpi_json") or {},
         )
-        result = JSONExporter().export(analysis, recording)
+        try:
+            result = JSONExporter().export(analysis, recording)
+        except Exception as exc:
+            log.error("stage.exporter.error", error=str(exc))
+            return _fail_state(state, "exporting", error=f"Export error: {exc}")
+
         log.info("stage.done", stage="exporting")
         return _patch(
             state,

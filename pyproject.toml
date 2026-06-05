@@ -26,6 +26,7 @@ dependencies = [
     "python-magic>=0.4.27",
     "types-boto3>=1.43.23",
     "faster-whisper>=1.2.1",
+    "openai>=2.41.0",
 ]
 
 [project.optional-dependencies]
