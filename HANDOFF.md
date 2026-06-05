@@ -14,7 +14,8 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M1 — Ядро/порты/граф** | ✅ Завершён, закоммичен `2f57693` |
 | **M2 — FileSource + MinIO + ffmpeg** | ✅ Завершён, закоммичен `e4f4220` |
 | **M3 — FasterWhisperEngine + STT API** | ✅ Завершён, закоммичен `47b7f48` |
-| M4–M10 | Не начато |
+| **M4 — OpenAICompatibleAnalyzer + анализ + API** | ✅ Завершён, закоммичен `5f21388` |
+| M5–M10 | Не начато |
 
 ### M2 — что сделано
 
@@ -37,6 +38,19 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 - **T6** — `GET /api/recordings/{id}/transcript` → `TranscriptOut(full_text, segments, detected_language)`; 404 при отсутствии; `recordings.py` расширен; 5 тестов
 
 **218 тестов** (47 новых), ruff + mypy --strict (64 файла) — зелёные
+
+### M4 — что сделано
+
+- **T1** — `KpiEntry` / `build_kpi_result_model` (dynamic Pydantic schema via `create_model`) — `app/adapters/analyzer/schema.py`; fact/scale validators; 12 тестов
+- **T2** — `build_prompt` (system/user prompt builder, rubric, anchors, few-shot, baseline & script modes) — `app/adapters/analyzer/prompt.py`; config-driven; 8 тестов
+- **T3** — `OpenAICompatibleAnalyzer` (OpenAI-совместимый API, structured output) — `app/adapters/analyzer/openai_compatible.py`; `api_key` только из env `LLM_API_KEY`; 7 контрактных тестов (mock `_client`)
+- **T4** — `compute_score` (пропорциональная нормализация весов, обе форматы KPI: plain и rich dict) — `app/services/score.py`; 10 тестов
+- **T5** — Тест нормализации весов (вкл. отсутствующие KPI исключаются из знаменателя) — `tests/services/test_weight_normalization.py`; 6 тестов
+- **T6** — `analyzing` node с DI `Analyzer`; исключения → `_fail_state` — `nodes.py`; 6 тестов
+- **T7** — `scoring` node (вызов `compute_score`, запись `weights_version`); `exporting` node с обработкой исключений — 8 тестов
+- **T8** — `GET /api/recordings/{id}/analysis` + `PATCH /api/recordings/{id}/analysis`; `auto_score` сохраняется до первой ручной правки; миграция `4b47e88b70e8` (`auto_score`, `corrected_by`) — 10 тестов
+
+**322 теста** (104 новых), ruff + mypy -- зелёные
 
 ### Добавленные зависимости (M2)
 - `boto3`, `types-boto3`, `python-magic` — через `uv add`
@@ -91,9 +105,9 @@ backend/
     adapters/
       audio/      # file_stub.py, file_source.py, badge_source.py, telephony_source.py
       stt/        # stub_stt.py, faster_whisper_engine.py, config.py, mapping.py
-      analyzer/   # stub_analyzer.py
+      analyzer/   # stub_analyzer.py, openai_compatible.py, schema.py, prompt.py
       crm/        # json_exporter.py
-    services/     # storage.py (ObjectStorage/S3), ingest.py (validate_upload), normalize.py (ffmpeg)
+    services/     # storage.py (ObjectStorage/S3), ingest.py (validate_upload), normalize.py (ffmpeg), score.py
     db/
       models/     # 7 ORM-моделей + __init__.py
       repositories/  # ManagerRepository, RecordingRepository
@@ -114,19 +128,19 @@ docs/
   dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M4
+## 5. Следующий шаг — M5
 
 **Запустить агента:**
 ```
-Реализуй milestone M4 по промпту docs/dev/implement-milestone.md
+Реализуй milestone M5 по промпту docs/dev/implement-milestone.md
 ```
 
-M4 добавляет `OpenAICompatibleAnalyzer` — адаптер `Analyzer` на базе OpenAI-совместимого API (gpt-4o-mini).
-Детали: `docs/dev/tasks/M4-analyzer-llm.md`.
+M5 — LangGraph worker: сохранение транскрипта + анализа в БД, обновление статуса `recording`, конец пайплайна.
+Детали: `docs/dev/tasks/M5-*.md`.
 
-**Перед M4 нужно:**
+**Перед M5 нужно:**
 1. Поднять MinIO + Postgres: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
-2. **СТОП**: M4 требует `LLM_API_KEY` (OpenAI-совместимый). Предоставь ключ в env перед запуском агента.
+2. `LLM_API_KEY` в env (для тестов с реальным LLM; unit-тесты работают без ключа)
 
 ## 6. Инструменты разработки
 
