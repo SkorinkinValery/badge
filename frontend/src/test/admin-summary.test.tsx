@@ -1,0 +1,92 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MantineProvider } from "@mantine/core";
+import SummaryPage from "@/app/admin/summary/page";
+
+vi.mock("@/lib/auth", () => ({
+  getToken: () => "admin-token",
+  authHeaders: () => ({ Authorization: "Bearer admin-token" }),
+  storeToken: vi.fn(),
+  clearToken: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
+function wrap(ui: React.ReactElement) {
+  return render(<MantineProvider>{ui}</MantineProvider>);
+}
+
+const SAMPLE_MANAGERS = [
+  { id: "mgr-1", full_name: "Иван Иванов", position: "Менеджер", is_active: true, device_id: null, default_script_id: null },
+];
+
+const SAMPLE_SUMMARY = {
+  manager_id: "mgr-1",
+  date: "2026-06-06",
+  total_recordings: 5,
+  total_duration_s: 1800.0,
+  avg_duration_s: 360.0,
+  avg_score: 78.5,
+  kpi_stats: [
+    { kpi_id: "greeting", label: "Приветствие", fulfilled_pct: 80.0 },
+    { kpi_id: "cta", label: "CTA", fulfilled_pct: 60.0 },
+  ],
+  violations: ["CTA"],
+  top_issues: ["CTA", "Приветствие"],
+};
+
+beforeEach(() => {
+  global.fetch = vi.fn().mockImplementation((url: string) => {
+    if (url.includes("/api/managers")) {
+      return Promise.resolve({ ok: true, json: async () => SAMPLE_MANAGERS });
+    }
+    if (url.includes("/api/admin/summary")) {
+      return Promise.resolve({ ok: true, json: async () => SAMPLE_SUMMARY });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) });
+  });
+});
+
+describe("Daily summary admin page", () => {
+  it("renders page title", async () => {
+    wrap(<SummaryPage />);
+    await waitFor(() =>
+      expect(screen.getByText(/дневная сводка/i)).toBeInTheDocument()
+    );
+  });
+
+  it("shows manager filter select", async () => {
+    wrap(<SummaryPage />);
+    await waitFor(() =>
+      expect(screen.getByText(/менеджер/i)).toBeInTheDocument()
+    );
+  });
+
+  it("shows date filter", async () => {
+    wrap(<SummaryPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/дата/i)).toBeInTheDocument()
+    );
+  });
+
+  it("shows total recordings count when summary loaded", async () => {
+    wrap(<SummaryPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("5").length).toBeGreaterThan(0)
+    );
+  });
+
+  it("shows avg score when loaded", async () => {
+    wrap(<SummaryPage />);
+    await waitFor(() =>
+      expect(screen.getByText("78.5%")).toBeInTheDocument()
+    );
+  });
+
+  it("shows violations list", async () => {
+    wrap(<SummaryPage />);
+    await waitFor(() =>
+      expect(screen.getAllByText("CTA").length).toBeGreaterThan(0)
+    );
+  });
+});

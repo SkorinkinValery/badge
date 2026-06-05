@@ -18,6 +18,7 @@ class ScriptModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    active_version_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
 
 class ScriptVerModel(Base):
