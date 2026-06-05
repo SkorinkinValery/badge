@@ -1,2 +1,29 @@
 .idea/
 .vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Datasets (large files)
+datasets/
+
+# Secrets
+*.pem
+*.key
