@@ -12,19 +12,21 @@ import structlog
 
 from app.core.domain.enums import RecordingStatus
 from app.core.pipeline.state import PipelineState
+from app.core.ports.stt_engine import STTEngine
 
 log = structlog.get_logger()
 
 NodeFn = Callable[[PipelineState], PipelineState]
 
 
-def _fail_state(state: PipelineState, stage: str) -> PipelineState:
+def _fail_state(state: PipelineState, stage: str, error: str | None = None) -> PipelineState:
     retry = (state.get("retry") or 0) + 1
-    log.warning("stage.failed", stage=stage, retry=retry)
+    msg = error or f"injected failure in stage: {stage}"
+    log.warning("stage.failed", stage=stage, retry=retry, error=msg)
     return cast(PipelineState, {
         **state,
         "status": RecordingStatus.FAILED.value,
-        "stage_error": f"injected failure in stage: {stage}",
+        "stage_error": msg,
         "retry": retry,
     })
 
@@ -33,7 +35,10 @@ def _patch(state: PipelineState, **updates: Any) -> PipelineState:
     return cast(PipelineState, {**state, **updates})
 
 
-def make_nodes(fail_at_stage: str | None = None) -> dict[str, NodeFn]:
+def make_nodes(
+    fail_at_stage: str | None = None,
+    stt_engine: STTEngine | None = None,
+) -> dict[str, NodeFn]:
     """Return a dict of stage node callables, optionally injecting a failure."""
 
     def normalizing(state: PipelineState) -> PipelineState:
@@ -61,20 +66,40 @@ def make_nodes(fail_at_stage: str | None = None) -> dict[str, NodeFn]:
         import uuid
         from datetime import UTC, datetime
 
-        from app.adapters.stt.stub_stt import StubSTTEngine
         from app.core.ports import AudioPayload
 
         log.info("stage.started", stage="transcribing")
+
+        engine: STTEngine
+        if stt_engine is not None:
+            engine = stt_engine
+        else:
+            from app.adapters.stt.stub_stt import StubSTTEngine
+            engine = StubSTTEngine()
+
+        audio_payload: dict[str, Any] = state.get("audio_payload") or {}
+        raw_audio = audio_payload.get("audio_data") or b"\x00" * 100
         audio = AudioPayload(
-            audio_data=b"\x00" * 100,
-            sample_rate=16000,
+            audio_data=raw_audio if isinstance(raw_audio, bytes) else b"\x00" * 100,
+            sample_rate=int(audio_payload.get("sample_rate") or 16000),
             manager_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-            channel="file",
+            channel=str(audio_payload.get("channel") or "file"),
             started_at=datetime.now(tz=UTC),
             consent_flag=True,
         )
-        transcript = StubSTTEngine().transcribe(audio)
-        log.info("stage.done", stage="transcribing")
+
+        try:
+            transcript = engine.transcribe(audio)
+        except Exception as exc:
+            log.error("stage.stt.error", error=str(exc))
+            return _fail_state(state, "transcribing", error=f"STT error: {exc}")
+
+        log.info(
+            "stage.done",
+            stage="transcribing",
+            language=transcript.detected_language,
+            segments=len(transcript.segments),
+        )
         return _patch(
             state,
             status=RecordingStatus.TRANSCRIBING.value,

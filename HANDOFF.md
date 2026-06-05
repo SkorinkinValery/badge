@@ -12,10 +12,11 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | `docs/dev/tasks/` (72 задачи, M0–M10) | Готово |
 | **M0 — Каркас** | ✅ Завершён, закоммичен `51cb847` |
 | **M1 — Ядро/порты/граф** | ✅ Завершён, закоммичен `2f57693` |
-| **M2 — FileSource + MinIO + ffmpeg** | ✅ Завершён (не закоммичен) |
-| M3–M10 | Не начато |
+| **M2 — FileSource + MinIO + ffmpeg** | ✅ Завершён, закоммичен `e4f4220` |
+| **M3 — FasterWhisperEngine + STT API** | ✅ Завершён, не закоммичен |
+| M4–M10 | Не начато |
 
-### M2 — что сделано (не закоммичено)
+### M2 — что сделано
 
 - **T1** — `ObjectStorage` (boto3/S3) — `app/services/storage.py`; `put_object`/`get_object`/`presigned_url`/`ensure_bucket`; 5 тестов
 - **T2** — Валидация загрузки (magic-bytes + ext + size) — `app/services/ingest.py`; `UploadValidationError`; 7 тестов
@@ -25,6 +26,17 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 - **T6** — `GET /api/recordings` + `GET /api/recordings/{id}` — `app/api/recordings.py`; 5 API-тестов
 
 **215 тестов** (171 unit/contract + 44 integration/API), ruff + mypy --strict (61 файл) — зелёные
+
+### M3 — что сделано
+
+- **T1** — `WhisperConfig` / `SttProviderConfig` (Pydantic) — `app/adapters/stt/config.py`; секция `stt.faster_whisper` в `providers.yaml`; 16 тестов
+- **T2** — `FasterWhisperEngine` адаптер (lazy-загрузка, singleton модели, обработка ошибок) — `app/adapters/stt/faster_whisper_engine.py`; контракт-тест `@pytest.mark.heavy` на `tiny`-модели; 5 тестов
+- **T3** — Маппинг сегментов → доменный `Transcript` — `app/adapters/stt/mapping.py`; 8 тестов
+- **T4** — `make_nodes(stt_engine=...)` — DI STTEngine в узел `transcribing`; обработка исключений → `failed`; `nodes.py` обновлён; 8 тестов
+- **T5** — `initial_prompt`/`vocabulary` config-driven (тест через mock `_load_model`); 5 тестов
+- **T6** — `GET /api/recordings/{id}/transcript` → `TranscriptOut(full_text, segments, detected_language)`; 404 при отсутствии; `recordings.py` расширен; 5 тестов
+
+**218 тестов** (47 новых), ruff + mypy --strict (64 файла) — зелёные
 
 ### Добавленные зависимости (M2)
 - `boto3`, `types-boto3`, `python-magic` — через `uv add`
@@ -99,19 +111,22 @@ docs/
   dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M3
+## 5. Следующий шаг — M4
 
 **Запустить агента:**
 ```
-Реализуй milestone M3 по промпту docs/dev/implement-milestone.md
+Реализуй milestone M4 по промпту docs/dev/implement-milestone.md
 ```
 
-M3 добавляет `FasterWhisperEngine` (STT self-host, CPU/GPU) — адаптер `STTEngine` на базе `faster-whisper`.
-Детали: `docs/dev/tasks/M3-stt-whisper.md`.
+M4 добавляет `OpenAICompatibleAnalyzer` — адаптер `Analyzer` на базе OpenAI-совместимого API (gpt-4o-mini).
+Детали: `docs/dev/tasks/M4-analyzer-llm.md`.
 
-**Перед M3 нужно:**
-1. Закоммитить M2 (`git add backend/ pyproject.toml HANDOFF.md && git commit`)
-2. MinIO уже поднят (`docker compose -f infra/docker-compose.yml up -d minio`)
+**Перед M4 нужно:**
+1. Поднять MinIO + Postgres: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
+2. **СТОП**: M4 требует `LLM_API_KEY` (OpenAI-совместимый). Предоставь ключ в env перед запуском агента.
+
+### Добавленные зависимости (M3)
+- `faster-whisper>=1.2.1` — через `uv add`
 
 ## 6. Инструменты разработки
 

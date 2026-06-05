@@ -25,6 +25,7 @@ dependencies = [
     "boto3>=1.43.23",
     "python-magic>=0.4.27",
     "types-boto3>=1.43.23",
+    "faster-whisper>=1.2.1",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +52,7 @@ markers = [
     "db: marks tests that require a live Postgres database",
     "contract: marks contract tests for port implementations",
     "integration: marks tests that require external services (MinIO, ffmpeg)",
+    "heavy: marks tests that require model download or GPU (skipped in standard CI)",
 ]
 
 [tool.ruff]
@@ -86,3 +88,7 @@ warn_unused_configs = true
 ignore_missing_imports = false
 mypy_path = "backend"
 files = ["backend/app"]
+
+[[tool.mypy.overrides]]
+module = "faster_whisper.*"
+ignore_missing_imports = true
