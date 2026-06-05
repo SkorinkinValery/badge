@@ -1,0 +1,199 @@
+"""Pipeline nodes — each node corresponds to a processing stage.
+
+Nodes call ports (not adapters directly); stubs are used in testing.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any, cast
+
+import structlog
+
+from app.core.domain.enums import RecordingStatus
+from app.core.pipeline.state import PipelineState
+
+log = structlog.get_logger()
+
+NodeFn = Callable[[PipelineState], PipelineState]
+
+
+def _fail_state(state: PipelineState, stage: str) -> PipelineState:
+    retry = (state.get("retry") or 0) + 1
+    log.warning("stage.failed", stage=stage, retry=retry)
+    return cast(PipelineState, {
+        **state,
+        "status": RecordingStatus.FAILED.value,
+        "stage_error": f"injected failure in stage: {stage}",
+        "retry": retry,
+    })
+
+
+def _patch(state: PipelineState, **updates: Any) -> PipelineState:
+    return cast(PipelineState, {**state, **updates})
+
+
+def make_nodes(fail_at_stage: str | None = None) -> dict[str, NodeFn]:
+    """Return a dict of stage node callables, optionally injecting a failure."""
+
+    def normalizing(state: PipelineState) -> PipelineState:
+        if fail_at_stage == "normalizing":
+            return _fail_state(state, "normalizing")
+        from app.adapters.audio.file_stub import FileStubSource
+
+        log.info("stage.started", stage="normalizing")
+        source = FileStubSource()
+        payload = source.fetch()
+        log.info("stage.done", stage="normalizing")
+        return _patch(
+            state,
+            status=RecordingStatus.NORMALIZING.value,
+            audio_payload={
+                "audio_data": "<bytes>",
+                "sample_rate": payload.sample_rate,
+                "channel": payload.channel,
+            },
+        )
+
+    def transcribing(state: PipelineState) -> PipelineState:
+        if fail_at_stage == "transcribing":
+            return _fail_state(state, "transcribing")
+        import uuid
+        from datetime import UTC, datetime
+
+        from app.adapters.stt.stub_stt import StubSTTEngine
+        from app.core.ports import AudioPayload
+
+        log.info("stage.started", stage="transcribing")
+        audio = AudioPayload(
+            audio_data=b"\x00" * 100,
+            sample_rate=16000,
+            manager_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            channel="file",
+            started_at=datetime.now(tz=UTC),
+            consent_flag=True,
+        )
+        transcript = StubSTTEngine().transcribe(audio)
+        log.info("stage.done", stage="transcribing")
+        return _patch(
+            state,
+            status=RecordingStatus.TRANSCRIBING.value,
+            transcript={
+                "full_text": transcript.full_text,
+                "detected_language": transcript.detected_language,
+                "segments": [
+                    {"start": s.start, "end": s.end, "text": s.text}
+                    for s in transcript.segments
+                ],
+            },
+        )
+
+    def analyzing(state: PipelineState) -> PipelineState:
+        if fail_at_stage == "analyzing":
+            return _fail_state(state, "analyzing")
+        import uuid
+
+        from app.adapters.analyzer.stub_analyzer import StubAnalyzer
+        from app.core.domain.transcript import Segment, Transcript
+
+        log.info("stage.started", stage="analyzing")
+        t_data: dict[str, Any] = state.get("transcript") or {}
+        raw_segs: list[dict[str, Any]] = t_data.get("segments") or [
+            {"start": 0.0, "end": 1.0, "text": ""}
+        ]
+        segments = tuple(
+            Segment(start=s["start"], end=s["end"], text=s["text"]) for s in raw_segs
+        )
+        transcript = Transcript(
+            id=uuid.uuid4(),
+            recording_id=uuid.UUID(state["recording_id"]),
+            full_text=t_data.get("full_text") or "",
+            segments=segments,
+            detected_language=t_data.get("detected_language") or "ru",
+        )
+        result = StubAnalyzer().analyze(transcript)
+        log.info("stage.done", stage="analyzing")
+        return _patch(
+            state,
+            status=RecordingStatus.ANALYZING.value,
+            analysis_result={
+                "summary": result.summary,
+                "kpi_json": result.kpi_json,
+            },
+        )
+
+    def scoring(state: PipelineState) -> PipelineState:
+        if fail_at_stage == "scoring":
+            return _fail_state(state, "scoring")
+        from app.config.kpi import load_kpi_config, load_weights_config
+
+        log.info("stage.started", stage="scoring")
+        ar: dict[str, Any] = state.get("analysis_result") or {}
+        kpi_json: dict[str, float] = ar.get("kpi_json") or {}
+        cfg = load_kpi_config()
+        weights_cfg = load_weights_config()
+
+        total_weight = sum(
+            weights_cfg.weights.get(k.id, k.weight)
+            for k in cfg.kpis
+            if k.id in kpi_json and k.include_in_score
+        )
+        if total_weight == 0:
+            score = 0.0
+        else:
+            weighted_sum = sum(
+                float(kpi_json[k.id]) * weights_cfg.weights.get(k.id, k.weight)
+                for k in cfg.kpis
+                if k.id in kpi_json and k.include_in_score
+            )
+            score = round((weighted_sum / total_weight / 10.0) * 100, 2)
+
+        verdict = "+" if score >= 80 else ("~" if score >= 50 else "-")
+        log.info("stage.done", stage="scoring")
+        return _patch(state, status=RecordingStatus.SCORING.value, score=score, verdict=verdict)
+
+    def exporting(state: PipelineState) -> PipelineState:
+        if fail_at_stage == "exporting":
+            return _fail_state(state, "exporting")
+        import uuid
+        from datetime import UTC, datetime
+
+        from app.adapters.crm.json_exporter import JSONExporter
+        from app.core.domain.recording import Recording
+        from app.core.ports import AnalysisResult
+
+        log.info("stage.started", stage="exporting")
+        ar: dict[str, Any] = state.get("analysis_result") or {}
+        recording = Recording(
+            id=uuid.UUID(state["recording_id"]),
+            manager_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            channel="file",
+            consent_flag=True,
+            status=RecordingStatus.EXPORTING,
+            created_at=datetime.now(tz=UTC),
+            retention_until=None,
+            audio_path=None,
+            stage_error=None,
+        )
+        analysis = AnalysisResult(
+            summary=ar.get("summary") or "",
+            kpi_json=ar.get("kpi_json") or {},
+        )
+        result = JSONExporter().export(analysis, recording)
+        log.info("stage.done", stage="exporting")
+        return _patch(
+            state,
+            status=RecordingStatus.EXPORTING.value,
+            export_result={
+                "success": result.success,
+                "external_id": result.external_id,
+            },
+        )
+
+    return {
+        "normalizing": normalizing,
+        "transcribing": transcribing,
+        "analyzing": analyzing,
+        "scoring": scoring,
+        "exporting": exporting,
+    }

@@ -21,6 +21,7 @@ dependencies = [
     "langgraph>=0.1.0",
     "asyncpg>=0.29.0",
     "psycopg2-binary>=2.9.9",
+    "langgraph-checkpoint-postgres>=3.1.0",
 ]
 
 [project.optional-dependencies]
@@ -43,6 +44,10 @@ packages = ["backend/app"]
 testpaths = ["backend/tests"]
 asyncio_mode = "auto"
 pythonpath = ["backend"]
+markers = [
+    "db: marks tests that require a live Postgres database",
+    "contract: marks contract tests for port implementations",
+]
 
 [tool.ruff]
 line-length = 100

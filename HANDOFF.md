@@ -11,25 +11,29 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | `docs/PLAN.md` | Утверждён |
 | `docs/dev/tasks/` (72 задачи, M0–M10) | Готово |
 | **M0 — Каркас** | ✅ Завершён, закоммичен `51cb847` |
-| M1 — Ядро/порты/граф | **Следующий шаг** |
+| **M1 — Ядро/порты/граф** | ✅ Завершён (не закоммичен) |
 | M2–M10 | Не начато |
 
-### M0 — что сделано (коммит `51cb847`)
-- Структура монорепо строго по `docs/PLAN.md §2.2`
-- `pyproject.toml`: fastapi, sqlalchemy 2.0, langgraph, pydantic-settings, alembic, ruff, mypy --strict
-- `infra/docker-compose.yml`: postgres + minio + caddy (без redis, без vLLM)
-- `infra/config/providers.yaml` — STT/LLM/CRM сменные конфигом; `api_key` только из env
-- `infra/config/kpi.yaml` — 10 KPI с поведенческими якорями; `infra/config/weights.yaml`
-- `app/config/settings.py`: `Settings(BaseSettings)` + `ProvidersConfig` (lru_cache)
-- `app/config/kpi.py`: `KpiItem`/`KpiConfig`/`WeightsConfig`, валидация связности весов
-- `app/main.py`: `create_app()` + structlog + `GET /health`
-- `app/db/`: `DeclarativeBase` + Alembic baseline revision
-- `.github/workflows/ci.yml`: lint / typecheck / test + eval (continue-on-error, skip без датасетов)
-- **49 тестов**, ruff + mypy --strict — зелёные
+### M1 — что сделано (не закоммичено)
 
-### Незакоммиченное (мелочи)
-- `.gitignore` расширен агентом (добавлены стандартные Python-паттерны) — не закоммичен
-- `uv.lock` — не закоммичен (можно добавить в `.gitignore` или закоммитить, на усмотрение)
+- **T1** — Доменные сущности: `Recording`, `Transcript`, `Analysis`, `Manager`, `Script`, `User` + Enum'ы (`RecordingStatus`, `Verdict`, `AnalysisMode`, `UserRole`) — `app/core/domain/`
+- **T2** — Порты (Protocol/`runtime_checkable`): `AudioSource`, `STTEngine`, `Analyzer`, `CRMExporter` + DTO (`AudioPayload`, `AnalysisResult`, `ExportResult`) — `app/core/ports/`
+- **T3** — Контракт-тесты портов: `backend/tests/contract/` (параметризованные харнессы для каждого порта)
+- **T4** — Стаб-адаптеры: `FileStubSource`, `StubSTTEngine`, `StubAnalyzer`, `JSONExporter`; стабы перспективы `BadgeSource`/`TelephonySource` (бросают `NotImplementedError`)
+- **T5** — SQLAlchemy 2.0 модели: `ManagerModel`, `ScriptModel`, `ScriptVerModel`, `RecordingModel`, `TranscriptModel`, `AnalysisModel`, `UserModel` + репозитории + Alembic миграция `core_schema`
+- **T6** — LangGraph граф: `normalizing→transcribing→analyzing→scoring→exporting`, ветка `failed`, `MemorySaver`/`PostgresSaver` checkpointer — `app/core/pipeline/`
+- **T7** — Воркер-раннер: `app/workers/runner.py` — `run_job(recording_id, db_url)` с Postgres checkpointer, идемпотентный resume
+- **171 тест** (было 49), ruff + mypy --strict — зелёные
+
+### Добавленные зависимости
+- `langgraph-checkpoint-postgres==3.1.0` (psycopg + psycopg-pool) — добавлены через `uv add`
+
+### Postgres в dev-окружении
+Порт 5432 занят системным Postgres. Badge-postgres запускается на **5434**:
+```bash
+POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres
+DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge uv run pytest backend/tests/ -v
+```
 
 ## 3. Ключевые технологические решения
 
@@ -57,59 +61,69 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 ```
 backend/
   app/
-    core/{ports,domain,pipeline}/   # ← M1 заполнит
-    adapters/{audio,stt,analyzer,crm}/
-    config/{settings.py,kpi.py}
-    api/health.py
-    db/{base.py,migrations/}
+    core/
+      domain/     # Recording, Transcript, Analysis, Manager, Script, User, enums
+      ports/      # AudioSource, STTEngine, Analyzer, CRMExporter + DTO
+      pipeline/   # state.py, nodes.py, graph.py (LangGraph)
+    adapters/
+      audio/      # file_stub.py, badge_source.py, telephony_source.py
+      stt/        # stub_stt.py
+      analyzer/   # stub_analyzer.py
+      crm/        # json_exporter.py
+    db/
+      models/     # 7 ORM-моделей + __init__.py
+      repositories/  # ManagerRepository, RecordingRepository
+      migrations/versions/  # baseline + core_schema
+    workers/      # runner.py (run_job)
+    config/       # settings.py, kpi.py
+    api/          # health.py
     main.py
-  tests/{unit,contract,integration,api,config,infra,db}/
+  tests/
+    unit/ contract/ integration/ api/ config/ infra/ db/
+    adapters/ core/{domain,ports,pipeline}/ workers/
 infra/
   docker-compose.yml
   config/{providers.yaml,kpi.yaml,weights.yaml}
-  caddy/Caddyfile
 docs/
-  PLAN.md
-  TZ-audiobadge-mvp.md
-  dev/
-    implement-milestone.md    # промпт для агента реализации
-    generate-dev-plan.md      # промпт-генератор плана
-    tasks/README.md + M0–M10  # 72 задачи
-.github/workflows/ci.yml
-pyproject.toml
-.env.example
+  PLAN.md  TZ-audiobadge-mvp.md
+  dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M1
+## 5. Следующий шаг — M2
 
 **Запустить агента:**
 ```
-Реализуй milestone M1 по промпту docs/dev/implement-milestone.md
+Реализуй milestone M2 по промпту docs/dev/implement-milestone.md
 ```
 
-M1 собирает автономное ядро: порты (`AudioSource`/`STTEngine`/`Analyzer`/`CRMExporter`),
-доменные сущности, SQLAlchemy-модели + миграция, LangGraph-граф стадий
-(`normalizing→transcribing→analyzing→scoring→exporting`) с checkpointer, стаб-адаптеры
-(включая `BadgeSource`/`TelephonySource`). Внешних ключей не нужно — всё на стабах.
+M2 собирает `FileSource` (upload API multipart mp3/wav/m4a, валидация) → MinIO → нормализация ffmpeg → job (статус `queued`).
+Детали: `docs/dev/tasks/M2-filesource-upload.md`.
 
-Детали задач: `docs/dev/tasks/M1-core-ports-graph.md`.
+**Перед M2 нужно:**
+1. Закоммитить M1 (`git add backend/ pyproject.toml && git commit`)
+2. Убедиться что MinIO поднят: `docker compose -f infra/docker-compose.yml up -d minio`
 
 ## 6. Инструменты разработки
 
 ```bash
 # виртуальное окружение / запуск (uv установлен)
-uv run pytest backend/tests/ -v --ignore=backend/tests/db
-uv run pytest backend/tests/db/ -v          # нужен postgres
+# Для тестов без БД:
+uv run pytest backend/tests/ --ignore=backend/tests/db -v
+
+# Для тестов с БД (badge-postgres на 5434):
+POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres
+DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge uv run pytest backend/tests/ -v
+
 uv run ruff check backend/
 uv run mypy backend/app --strict
 
 # инфраструктура
-docker compose -f infra/docker-compose.yml up -d postgres minio
+POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio
 docker compose -f infra/docker-compose.yml down
 
 # миграции
-uv run alembic -c backend/alembic.ini upgrade head
-uv run alembic -c backend/alembic.ini revision --autogenerate -m "<msg>"
+DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge uv run alembic -c backend/alembic.ini upgrade head
+DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge uv run alembic -c backend/alembic.ini revision --autogenerate -m "<msg>"
 ```
 
 ## 7. Открытые вопросы к заказчику
