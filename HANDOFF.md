@@ -13,7 +13,7 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M0 — Каркас** | ✅ Завершён, закоммичен `51cb847` |
 | **M1 — Ядро/порты/граф** | ✅ Завершён, закоммичен `2f57693` |
 | **M2 — FileSource + MinIO + ffmpeg** | ✅ Завершён, закоммичен `e4f4220` |
-| **M3 — FasterWhisperEngine + STT API** | ✅ Завершён, не закоммичен |
+| **M3 — FasterWhisperEngine + STT API** | ✅ Завершён, закоммичен `47b7f48` |
 | M4–M10 | Не начато |
 
 ### M2 — что сделано
@@ -40,6 +40,9 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 
 ### Добавленные зависимости (M2)
 - `boto3`, `types-boto3`, `python-magic` — через `uv add`
+
+### Добавленные зависимости (M3)
+- `faster-whisper>=1.2.1` — через `uv add`
 
 ### Инфраструктура в dev-окружении
 ```bash
@@ -87,7 +90,7 @@ backend/
       pipeline/   # state.py, nodes.py, graph.py (LangGraph)
     adapters/
       audio/      # file_stub.py, file_source.py, badge_source.py, telephony_source.py
-      stt/        # stub_stt.py
+      stt/        # stub_stt.py, faster_whisper_engine.py, config.py, mapping.py
       analyzer/   # stub_analyzer.py
       crm/        # json_exporter.py
     services/     # storage.py (ObjectStorage/S3), ingest.py (validate_upload), normalize.py (ffmpeg)
@@ -124,9 +127,6 @@ M4 добавляет `OpenAICompatibleAnalyzer` — адаптер `Analyzer` �
 **Перед M4 нужно:**
 1. Поднять MinIO + Postgres: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
 2. **СТОП**: M4 требует `LLM_API_KEY` (OpenAI-совместимый). Предоставь ключ в env перед запуском агента.
-
-### Добавленные зависимости (M3)
-- `faster-whisper>=1.2.1` — через `uv add`
 
 ## 6. Инструменты разработки
 
