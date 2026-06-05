@@ -15,7 +15,8 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M2 — FileSource + MinIO + ffmpeg** | ✅ Завершён, закоммичен `e4f4220` |
 | **M3 — FasterWhisperEngine + STT API** | ✅ Завершён, закоммичен `47b7f48` |
 | **M4 — OpenAICompatibleAnalyzer + анализ + API** | ✅ Завершён, закоммичен `5f21388` |
-| M5–M10 | Не начато |
+| **M5 — Auth + UI (Next.js + Mantine)** | ✅ Завершён, закоммичен `1054df7` |
+| M6–M10 | Не начато |
 
 ### M2 — что сделано
 
@@ -50,13 +51,29 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 - **T7** — `scoring` node (вызов `compute_score`, запись `weights_version`); `exporting` node с обработкой исключений — 8 тестов
 - **T8** — `GET /api/recordings/{id}/analysis` + `PATCH /api/recordings/{id}/analysis`; `auto_score` сохраняется до первой ручной правки; миграция `4b47e88b70e8` (`auto_score`, `corrected_by`) — 10 тестов
 
-**322 теста** (104 новых), ruff + mypy -- зелёные
+**322 теста** (104 новых), ruff + mypy — зелёные
+
+### M5 — что сделано
+
+- **T1** — argon2 хэш/верификация, `UserRole` enum, `seed_admin_if_missing` — `app/services/auth.py`; 11 тестов
+- **T2** — `POST /api/auth/login` (OAuth2 form) → JWT (sub/role/exp); `TokenOut`; секрет из env — `app/api/auth.py`; 6 тестов
+- **T3** — `get_current_user`, `require_role(admin/viewer)`, `AnyUserRequired`/`AdminRequired` — `app/api/deps.py`; все роуты `recordings`/`uploads` защищены; существующие тесты обновлены с токенами; 9 тестов
+- **T4** — Next.js 14 App Router + Mantine v7; Vitest 1.x; `lib/auth.ts` (sessionStorage); `lib/api.ts`; страница логина; 5 frontend тестов
+- **T5** — Страница списка записей (`/recordings`) со статусами, таблица Mantine, auth guard; 3 frontend теста
+- **T6** — Карточка записи (`/recordings/[id]`): транскрипт, KPI-таблица с цитатами, балл/вердикт; 5 frontend тестов
+- **T7** — `ScoreCorrectionForm`: PATCH `/analysis`, показывает auto_score (исходный) vs правка; 5 frontend тестов
+
+**348 backend + 18 frontend тестов**, ruff + mypy — зелёные
 
 ### Добавленные зависимости (M2)
 - `boto3`, `types-boto3`, `python-magic` — через `uv add`
 
 ### Добавленные зависимости (M3)
 - `faster-whisper>=1.2.1` — через `uv add`
+
+### Добавленные зависимости (M5)
+- Backend: `argon2-cffi>=23.1`, `python-jose[cryptography]>=3.3`, `types-python-jose`
+- Frontend: Next.js 14, Mantine v7, Vitest 1.x, @testing-library/react
 
 ### Инфраструктура в dev-окружении
 ```bash
@@ -128,19 +145,20 @@ docs/
   dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M5
+## 5. Следующий шаг — M6
 
 **Запустить агента:**
 ```
-Реализуй milestone M5 по промпту docs/dev/implement-milestone.md
+Реализуй milestone M6 по промпту docs/dev/implement-milestone.md
 ```
 
-M5 — LangGraph worker: сохранение транскрипта + анализа в БД, обновление статуса `recording`, конец пайплайна.
-Детали: `docs/dev/tasks/M5-*.md`.
+M6 — Админка: менеджеры, скрипты, сводка за день.
+Детали: `docs/dev/tasks/M6-admin.md`.
 
-**Перед M5 нужно:**
+**Перед M6 нужно:**
 1. Поднять MinIO + Postgres: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
 2. `LLM_API_KEY` в env (для тестов с реальным LLM; unit-тесты работают без ключа)
+3. Фронтенд тесты: `cd frontend && npm test`
 
 ## 6. Инструменты разработки
 
