@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.29.0",
-    "sqlalchemy>=2.0.0",
+    "sqlalchemy[asyncio]>=2.0.0",
     "alembic>=1.13.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
@@ -22,6 +22,9 @@ dependencies = [
     "asyncpg>=0.29.0",
     "psycopg2-binary>=2.9.9",
     "langgraph-checkpoint-postgres>=3.1.0",
+    "boto3>=1.43.23",
+    "python-magic>=0.4.27",
+    "types-boto3>=1.43.23",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +50,7 @@ pythonpath = ["backend"]
 markers = [
     "db: marks tests that require a live Postgres database",
     "contract: marks contract tests for port implementations",
+    "integration: marks tests that require external services (MinIO, ffmpeg)",
 ]
 
 [tool.ruff]

@@ -11,28 +11,36 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | `docs/PLAN.md` | Утверждён |
 | `docs/dev/tasks/` (72 задачи, M0–M10) | Готово |
 | **M0 — Каркас** | ✅ Завершён, закоммичен `51cb847` |
-| **M1 — Ядро/порты/граф** | ✅ Завершён (не закоммичен) |
-| M2–M10 | Не начато |
+| **M1 — Ядро/порты/граф** | ✅ Завершён, закоммичен `2f57693` |
+| **M2 — FileSource + MinIO + ffmpeg** | ✅ Завершён (не закоммичен) |
+| M3–M10 | Не начато |
 
-### M1 — что сделано (не закоммичено)
+### M2 — что сделано (не закоммичено)
 
-- **T1** — Доменные сущности: `Recording`, `Transcript`, `Analysis`, `Manager`, `Script`, `User` + Enum'ы (`RecordingStatus`, `Verdict`, `AnalysisMode`, `UserRole`) — `app/core/domain/`
-- **T2** — Порты (Protocol/`runtime_checkable`): `AudioSource`, `STTEngine`, `Analyzer`, `CRMExporter` + DTO (`AudioPayload`, `AnalysisResult`, `ExportResult`) — `app/core/ports/`
-- **T3** — Контракт-тесты портов: `backend/tests/contract/` (параметризованные харнессы для каждого порта)
-- **T4** — Стаб-адаптеры: `FileStubSource`, `StubSTTEngine`, `StubAnalyzer`, `JSONExporter`; стабы перспективы `BadgeSource`/`TelephonySource` (бросают `NotImplementedError`)
-- **T5** — SQLAlchemy 2.0 модели: `ManagerModel`, `ScriptModel`, `ScriptVerModel`, `RecordingModel`, `TranscriptModel`, `AnalysisModel`, `UserModel` + репозитории + Alembic миграция `core_schema`
-- **T6** — LangGraph граф: `normalizing→transcribing→analyzing→scoring→exporting`, ветка `failed`, `MemorySaver`/`PostgresSaver` checkpointer — `app/core/pipeline/`
-- **T7** — Воркер-раннер: `app/workers/runner.py` — `run_job(recording_id, db_url)` с Postgres checkpointer, идемпотентный resume
-- **171 тест** (было 49), ruff + mypy --strict — зелёные
+- **T1** — `ObjectStorage` (boto3/S3) — `app/services/storage.py`; `put_object`/`get_object`/`presigned_url`/`ensure_bucket`; 5 тестов
+- **T2** — Валидация загрузки (magic-bytes + ext + size) — `app/services/ingest.py`; `UploadValidationError`; 7 тестов
+- **T3** — Нормализация ffmpeg (16 kHz mono wav) — `app/services/normalize.py`; `NormalizationError`; 4 теста
+- **T4** — `FileSource` адаптер — `app/adapters/audio/file_source.py`; контракт-тест `AudioSource` расширен на `FileSource`; 14 контрактных тестов
+- **T5** — `POST /api/uploads` (multipart) → MinIO → `recording(status=queued)` — `app/api/uploads.py`; 5 API-тестов
+- **T6** — `GET /api/recordings` + `GET /api/recordings/{id}` — `app/api/recordings.py`; 5 API-тестов
 
-### Добавленные зависимости
-- `langgraph-checkpoint-postgres==3.1.0` (psycopg + psycopg-pool) — добавлены через `uv add`
+**215 тестов** (171 unit/contract + 44 integration/API), ruff + mypy --strict (61 файл) — зелёные
 
-### Postgres в dev-окружении
-Порт 5432 занят системным Postgres. Badge-postgres запускается на **5434**:
+### Добавленные зависимости (M2)
+- `boto3`, `types-boto3`, `python-magic` — через `uv add`
+
+### Инфраструктура в dev-окружении
 ```bash
-POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres
-DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge uv run pytest backend/tests/ -v
+# Порт 5432 занят системным Postgres → badge-postgres на 5434
+# MinIO по умолчанию на 9000
+POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio
+
+# Тесты без внешних сервисов (unit + contract):
+uv run pytest backend/tests/ --ignore=backend/tests/db --ignore=backend/tests/workers -q
+
+# Все тесты (c MinIO + Postgres на 5434):
+DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge \
+  uv run pytest backend/tests/ --ignore=backend/tests/db --ignore=backend/tests/workers -q
 ```
 
 ## 3. Ключевые технологические решения
@@ -66,17 +74,19 @@ backend/
       ports/      # AudioSource, STTEngine, Analyzer, CRMExporter + DTO
       pipeline/   # state.py, nodes.py, graph.py (LangGraph)
     adapters/
-      audio/      # file_stub.py, badge_source.py, telephony_source.py
+      audio/      # file_stub.py, file_source.py, badge_source.py, telephony_source.py
       stt/        # stub_stt.py
       analyzer/   # stub_analyzer.py
       crm/        # json_exporter.py
+    services/     # storage.py (ObjectStorage/S3), ingest.py (validate_upload), normalize.py (ffmpeg)
     db/
       models/     # 7 ORM-моделей + __init__.py
       repositories/  # ManagerRepository, RecordingRepository
       migrations/versions/  # baseline + core_schema
+      session.py  # async SQLAlchemy (make_session_factory / get_session)
     workers/      # runner.py (run_job)
     config/       # settings.py, kpi.py
-    api/          # health.py
+    api/          # health.py, uploads.py, recordings.py
     main.py
   tests/
     unit/ contract/ integration/ api/ config/ infra/ db/
@@ -89,19 +99,19 @@ docs/
   dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M2
+## 5. Следующий шаг — M3
 
 **Запустить агента:**
 ```
-Реализуй milestone M2 по промпту docs/dev/implement-milestone.md
+Реализуй milestone M3 по промпту docs/dev/implement-milestone.md
 ```
 
-M2 собирает `FileSource` (upload API multipart mp3/wav/m4a, валидация) → MinIO → нормализация ffmpeg → job (статус `queued`).
-Детали: `docs/dev/tasks/M2-filesource-upload.md`.
+M3 добавляет `FasterWhisperEngine` (STT self-host, CPU/GPU) — адаптер `STTEngine` на базе `faster-whisper`.
+Детали: `docs/dev/tasks/M3-stt-whisper.md`.
 
-**Перед M2 нужно:**
-1. Закоммитить M1 (`git add backend/ pyproject.toml && git commit`)
-2. Убедиться что MinIO поднят: `docker compose -f infra/docker-compose.yml up -d minio`
+**Перед M3 нужно:**
+1. Закоммитить M2 (`git add backend/ pyproject.toml HANDOFF.md && git commit`)
+2. MinIO уже поднят (`docker compose -f infra/docker-compose.yml up -d minio`)
 
 ## 6. Инструменты разработки
 

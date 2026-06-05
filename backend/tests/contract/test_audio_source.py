@@ -1,19 +1,86 @@
-"""Contract tests for AudioSource port — M1-T3."""
+"""Contract tests for AudioSource port — M1-T3 / M2-T4."""
 
 from __future__ import annotations
+
+import io
+import os
+import struct
+import uuid
 
 import pytest
 
 from app.core.ports import AudioPayload, AudioSource
 
 
+def _make_wav_bytes(sample_rate: int = 16000) -> bytes:
+    num_samples = sample_rate // 4
+    data_size = num_samples * 2
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", 36 + data_size, b"WAVE",
+        b"fmt ", 16, 1, 1, sample_rate, sample_rate * 2, 2, 16,
+        b"data", data_size,
+    )
+    return header + b"\x00" * data_size
+
+
+def _try_file_source() -> tuple[str, AudioSource] | None:
+    endpoint = os.environ.get("MINIO_ENDPOINT", "http://localhost:9000")
+    try:
+        import boto3
+        import botocore
+        client = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=os.environ.get("MINIO_ROOT_USER", "minioadmin"),
+            aws_secret_access_key=os.environ.get("MINIO_ROOT_PASSWORD", "minioadmin"),
+            region_name="us-east-1",
+        )
+        client.head_bucket(Bucket="test-contract")
+    except Exception:
+        try:
+            client.create_bucket(Bucket="test-contract")  # type: ignore[possibly-undefined]
+        except Exception:
+            return None
+
+    from app.adapters.audio.file_source import FileSource
+    from app.services.storage import ObjectStorage
+
+    storage = ObjectStorage(
+        endpoint=endpoint,
+        access_key=os.environ.get("MINIO_ROOT_USER", "minioadmin"),
+        secret_key=os.environ.get("MINIO_ROOT_PASSWORD", "minioadmin"),
+        bucket="test-contract",
+    )
+    storage.ensure_bucket()
+    rid = uuid.uuid4()
+    wav = _make_wav_bytes()
+    key = storage.put_object(
+        ObjectStorage.make_key(rid, "normalized", ".wav"),
+        io.BytesIO(wav),
+        len(wav),
+        "audio/wav",
+    )
+    src = FileSource(
+        storage=storage,
+        normalized_key=key,
+        manager_id=uuid.uuid4(),
+        consent_flag=True,
+    )
+    return ("FileSource", src)
+
+
 def get_audio_source_impls() -> list[tuple[str, AudioSource]]:
-    """Return list of (label, impl) for parametrisation. Extended in T4."""
+    impls: list[tuple[str, AudioSource]] = []
     try:
         from app.adapters.audio.file_stub import FileStubSource
-        return [("FileStubSource", FileStubSource())]
+        impls.append(("FileStubSource", FileStubSource()))
     except ImportError:
-        return []
+        pass
+    fs = _try_file_source()
+    if fs:
+        impls.append(fs)
+    return impls
 
 
 _impls = get_audio_source_impls()
