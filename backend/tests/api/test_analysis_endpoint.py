@@ -13,6 +13,8 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from tests.api.conftest import _JWT_SECRET, admin_headers
+
 pytestmark = pytest.mark.integration
 
 DB_URL = os.environ.get(
@@ -60,6 +62,7 @@ def test_app(sync_engine):  # type: ignore[no-untyped-def]
         DATABASE_URL=DB_URL,
         MINIO_ENDPOINT=MINIO_ENDPOINT,
         MINIO_BUCKET="test-recordings",
+        JWT_SECRET=_JWT_SECRET,
     )
     app = create_app(settings=settings)
     app.state.session_factory = make_session_factory(
@@ -93,6 +96,7 @@ async def recording_with_analysis(test_app, sync_engine, manager_id: uuid.UUID) 
     ) as client:
         resp = await client.post(
             "/api/uploads",
+            headers=admin_headers(),
             data={"manager_id": str(manager_id), "consent_flag": "true"},
             files={"file": ("analysis_test.wav", io.BytesIO(_make_wav()), "audio/wav")},
         )
@@ -109,7 +113,7 @@ async def recording_with_analysis(test_app, sync_engine, manager_id: uuid.UUID) 
             summary="Менеджер хорошо представился и выявил потребность.",
             kpi_json={
                 "greeting": {"value": 8.0, "quote": "Добрый день", "comment": "хорошо"},
-                "needs_discovery": {"value": 7.0, "quote": "расскажите о проблеме", "comment": "ок"},
+                "needs_discovery": {"value": 7.0, "quote": "расскажите про проблему", "comment": "ок"},
             },
             score=75.0,
             verdict="~",
@@ -129,6 +133,7 @@ async def recording_no_analysis(test_app, manager_id: uuid.UUID) -> uuid.UUID:
     ) as client:
         resp = await client.post(
             "/api/uploads",
+            headers=admin_headers(),
             data={"manager_id": str(manager_id), "consent_flag": "true"},
             files={"file": ("no_analysis.wav", io.BytesIO(_make_wav()), "audio/wav")},
         )
@@ -143,7 +148,7 @@ class TestAnalysisGetEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis")
+            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis", headers=admin_headers())
         assert resp.status_code == 200
 
     @pytest.mark.anyio
@@ -153,7 +158,7 @@ class TestAnalysisGetEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis")
+            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis", headers=admin_headers())
         body = resp.json()
         assert "summary" in body
         assert "менеджер" in body["summary"].lower()
@@ -165,7 +170,7 @@ class TestAnalysisGetEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis")
+            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis", headers=admin_headers())
         body = resp.json()
         assert "kpi_json" in body
         assert "greeting" in body["kpi_json"]
@@ -177,7 +182,7 @@ class TestAnalysisGetEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis")
+            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis", headers=admin_headers())
         body = resp.json()
         assert body["score"] == 75.0
         assert body["verdict"] == "~"
@@ -189,7 +194,7 @@ class TestAnalysisGetEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis")
+            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis", headers=admin_headers())
         body = resp.json()
         assert body["mode"] == "baseline"
 
@@ -200,7 +205,7 @@ class TestAnalysisGetEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_no_analysis}/analysis")
+            resp = await client.get(f"/api/recordings/{recording_no_analysis}/analysis", headers=admin_headers())
         assert resp.status_code == 404
 
     @pytest.mark.anyio
@@ -208,7 +213,7 @@ class TestAnalysisGetEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{uuid.uuid4()}/analysis")
+            resp = await client.get(f"/api/recordings/{uuid.uuid4()}/analysis", headers=admin_headers())
         assert resp.status_code == 404
 
 
@@ -222,6 +227,7 @@ class TestAnalysisPatchEndpoint:
         ) as client:
             resp = await client.patch(
                 f"/api/recordings/{recording_with_analysis}/analysis",
+                headers=admin_headers(),
                 json={"score": 90.0, "verdict": "+", "corrected_by": "supervisor"},
             )
         assert resp.status_code == 200
@@ -234,7 +240,7 @@ class TestAnalysisPatchEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis")
+            resp = await client.get(f"/api/recordings/{recording_with_analysis}/analysis", headers=admin_headers())
         body = resp.json()
         assert "auto_score" in body
 
@@ -247,6 +253,7 @@ class TestAnalysisPatchEndpoint:
         ) as client:
             resp = await client.patch(
                 f"/api/recordings/{recording_no_analysis}/analysis",
+                headers=admin_headers(),
                 json={"score": 90.0},
             )
         assert resp.status_code == 404

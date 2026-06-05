@@ -13,6 +13,8 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from tests.api.conftest import _JWT_SECRET, admin_headers
+
 pytestmark = pytest.mark.integration
 
 DB_URL = os.environ.get(
@@ -60,6 +62,7 @@ def test_app(sync_engine):  # type: ignore[no-untyped-def]
         DATABASE_URL=DB_URL,
         MINIO_ENDPOINT=MINIO_ENDPOINT,
         MINIO_BUCKET="test-recordings",
+        JWT_SECRET=_JWT_SECRET,
     )
     app = create_app(settings=settings)
     app.state.session_factory = make_session_factory(
@@ -93,6 +96,7 @@ async def seeded_recording_id(test_app, manager_id: uuid.UUID) -> uuid.UUID:
     ) as client:
         resp = await client.post(
             "/api/uploads",
+            headers=admin_headers(),
             data={"manager_id": str(manager_id), "consent_flag": "true"},
             files={"file": ("seed.wav", io.BytesIO(_make_wav()), "audio/wav")},
         )
@@ -105,7 +109,7 @@ class TestRecordingsEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get("/api/recordings")
+            resp = await client.get("/api/recordings", headers=admin_headers())
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
@@ -116,7 +120,7 @@ class TestRecordingsEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get("/api/recordings")
+            resp = await client.get("/api/recordings", headers=admin_headers())
         items = resp.json()
         ids = [item["id"] for item in items]
         assert str(seeded_recording_id) in ids
@@ -128,7 +132,7 @@ class TestRecordingsEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{seeded_recording_id}")
+            resp = await client.get(f"/api/recordings/{seeded_recording_id}", headers=admin_headers())
         assert resp.status_code == 200
         body = resp.json()
         assert body["id"] == str(seeded_recording_id)
@@ -144,7 +148,7 @@ class TestRecordingsEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings?manager_id={manager_id}")
+            resp = await client.get(f"/api/recordings?manager_id={manager_id}", headers=admin_headers())
         assert resp.status_code == 200
         items = resp.json()
         assert all(item["manager_id"] == str(manager_id) for item in items)
@@ -155,5 +159,5 @@ class TestRecordingsEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{missing_id}")
+            resp = await client.get(f"/api/recordings/{missing_id}", headers=admin_headers())
         assert resp.status_code == 404

@@ -13,6 +13,8 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from tests.api.conftest import _JWT_SECRET, admin_headers
+
 pytestmark = pytest.mark.integration
 
 DB_URL = os.environ.get(
@@ -60,6 +62,7 @@ def test_app(sync_engine):  # type: ignore[no-untyped-def]
         DATABASE_URL=DB_URL,
         MINIO_ENDPOINT=MINIO_ENDPOINT,
         MINIO_BUCKET="test-recordings",
+        JWT_SECRET=_JWT_SECRET,
     )
     app = create_app(settings=settings)
     app.state.session_factory = make_session_factory(
@@ -94,6 +97,7 @@ async def recording_with_transcript(test_app, sync_engine, manager_id: uuid.UUID
     ) as client:
         resp = await client.post(
             "/api/uploads",
+            headers=admin_headers(),
             data={"manager_id": str(manager_id), "consent_flag": "true"},
             files={"file": ("test.wav", io.BytesIO(_make_wav()), "audio/wav")},
         )
@@ -127,6 +131,7 @@ async def recording_without_transcript(test_app, manager_id: uuid.UUID) -> uuid.
     ) as client:
         resp = await client.post(
             "/api/uploads",
+            headers=admin_headers(),
             data={"manager_id": str(manager_id), "consent_flag": "true"},
             files={"file": ("no_transcript.wav", io.BytesIO(_make_wav()), "audio/wav")},
         )
@@ -141,7 +146,7 @@ class TestTranscriptEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_transcript}/transcript")
+            resp = await client.get(f"/api/recordings/{recording_with_transcript}/transcript", headers=admin_headers())
         assert resp.status_code == 200
         body = resp.json()
         assert "full_text" in body
@@ -154,7 +159,7 @@ class TestTranscriptEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_transcript}/transcript")
+            resp = await client.get(f"/api/recordings/{recording_with_transcript}/transcript", headers=admin_headers())
         body = resp.json()
         assert "segments" in body
         assert len(body["segments"]) > 0
@@ -168,7 +173,7 @@ class TestTranscriptEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_with_transcript}/transcript")
+            resp = await client.get(f"/api/recordings/{recording_with_transcript}/transcript", headers=admin_headers())
         body = resp.json()
         assert body["detected_language"] == "ru"
 
@@ -179,7 +184,7 @@ class TestTranscriptEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{recording_without_transcript}/transcript")
+            resp = await client.get(f"/api/recordings/{recording_without_transcript}/transcript", headers=admin_headers())
         assert resp.status_code == 404
 
     @pytest.mark.anyio
@@ -188,5 +193,5 @@ class TestTranscriptEndpoint:
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"
         ) as client:
-            resp = await client.get(f"/api/recordings/{fake_id}/transcript")
+            resp = await client.get(f"/api/recordings/{fake_id}/transcript", headers=admin_headers())
         assert resp.status_code == 404

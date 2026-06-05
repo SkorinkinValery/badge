@@ -13,6 +13,8 @@ import uuid
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from tests.api.conftest import _JWT_SECRET, admin_headers
+
 pytestmark = pytest.mark.integration
 
 DB_URL = os.environ.get(
@@ -50,6 +52,7 @@ def test_app():  # type: ignore[no-untyped-def]
         DATABASE_URL=DB_URL,
         MINIO_ENDPOINT=MINIO_ENDPOINT,
         MINIO_BUCKET="test-uploads",
+        JWT_SECRET=_JWT_SECRET,
     )
     app = create_app(settings=settings)
     # Use NullPool in tests to avoid event-loop-closed teardown errors
@@ -108,6 +111,7 @@ class TestUploadEndpoint:
         ) as client:
             resp = await client.post(
                 "/api/uploads",
+                headers=admin_headers(),
                 data={"manager_id": str(manager_id), "consent_flag": "true"},
                 files={"file": ("recording.wav", io.BytesIO(_make_wav()), "audio/wav")},
             )
@@ -128,6 +132,7 @@ class TestUploadEndpoint:
         ) as client:
             resp = await client.post(
                 "/api/uploads",
+                headers=admin_headers(),
                 data={"manager_id": str(manager_id), "consent_flag": "true"},
                 files={"file": ("rec.wav", io.BytesIO(_make_wav()), "audio/wav")},
             )
@@ -145,6 +150,7 @@ class TestUploadEndpoint:
         ) as client:
             resp = await client.post(
                 "/api/uploads",
+                headers=admin_headers(),
                 data={"manager_id": str(manager_id), "consent_flag": "true"},
                 files={"file": ("recording.ogg", io.BytesIO(ogg), "audio/ogg")},
             )
@@ -157,6 +163,7 @@ class TestUploadEndpoint:
         ) as client:
             resp = await client.post(
                 "/api/uploads",
+                headers=admin_headers(),
                 data={"manager_id": str(manager_id), "consent_flag": "false"},
                 files={"file": ("recording.wav", io.BytesIO(_make_wav()), "audio/wav")},
             )
@@ -173,6 +180,7 @@ class TestUploadEndpoint:
         ) as client:
             resp = await client.post(
                 "/api/uploads",
+                headers=admin_headers(),
                 data={"manager_id": str(manager_id), "consent_flag": "true"},
                 files={"file": ("rec.wav", io.BytesIO(_make_wav()), "audio/wav")},
             )

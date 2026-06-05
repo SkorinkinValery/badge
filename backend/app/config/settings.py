@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="changeme", alias="SECRET_KEY")
     debug: bool = Field(default=False, alias="DEBUG")
 
+    # Auth — credentials always from env, never from yaml
+    admin_login: str = Field(default="admin", alias="ADMIN_LOGIN")
+    admin_password: str = Field(default="changeme", alias="ADMIN_PASSWORD")
+    jwt_secret: str = Field(default="changeme-jwt", alias="JWT_SECRET")
+    jwt_expire_minutes: int = Field(default=60, alias="JWT_EXPIRE_MINUTES")
+
     # Path to providers.yaml
     providers_yaml_path: Path = Field(
         default=_DEFAULT_PROVIDERS_PATH,

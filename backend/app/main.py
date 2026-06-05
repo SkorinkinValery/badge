@@ -54,8 +54,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(health_router)
 
+    from app.api.auth import router as auth_router
     from app.api.recordings import router as recordings_router
     from app.api.uploads import router as uploads_router
+    app.include_router(auth_router)
     app.include_router(uploads_router)
     app.include_router(recordings_router)
 

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import AdminRequired, AnyUserRequired
 from app.db.models.analysis import AnalysisModel
 from app.db.models.recording import RecordingModel
 from app.db.models.transcript import TranscriptModel
@@ -61,7 +62,7 @@ class AnalysisPatchIn(BaseModel):
     corrected_by: str | None = None
 
 
-@router.get("", response_model=list[RecordingOut])
+@router.get("", response_model=list[RecordingOut], dependencies=[AnyUserRequired])
 async def list_recordings(
     session: Annotated[AsyncSession, Depends(get_session)],
     manager_id: uuid.UUID | None = None,
@@ -75,7 +76,7 @@ async def list_recordings(
     return [RecordingOut.model_validate(r, from_attributes=True) for r in rows]
 
 
-@router.get("/{recording_id}/analysis", response_model=AnalysisOut)
+@router.get("/{recording_id}/analysis", response_model=AnalysisOut, dependencies=[AnyUserRequired])
 async def get_analysis(
     recording_id: uuid.UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -98,7 +99,7 @@ async def get_analysis(
     )
 
 
-@router.patch("/{recording_id}/analysis", response_model=AnalysisOut)
+@router.patch("/{recording_id}/analysis", response_model=AnalysisOut, dependencies=[AdminRequired])
 async def patch_analysis(
     recording_id: uuid.UUID,
     body: AnalysisPatchIn,
@@ -137,7 +138,7 @@ async def patch_analysis(
     )
 
 
-@router.get("/{recording_id}/transcript", response_model=TranscriptOut)
+@router.get("/{recording_id}/transcript", response_model=TranscriptOut, dependencies=[AnyUserRequired])
 async def get_transcript(
     recording_id: uuid.UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -162,7 +163,7 @@ async def get_transcript(
     )
 
 
-@router.get("/{recording_id}", response_model=RecordingOut)
+@router.get("/{recording_id}", response_model=RecordingOut, dependencies=[AnyUserRequired])
 async def get_recording(
     recording_id: uuid.UUID,
     session: Annotated[AsyncSession, Depends(get_session)],

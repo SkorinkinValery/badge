@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import AdminRequired
 from app.config.settings import Settings, get_settings
 from app.core.domain.enums import RecordingStatus
 from app.db.models.recording import RecordingModel
@@ -40,7 +41,7 @@ def _get_storage(settings: Annotated[Settings, Depends(get_settings)]) -> Object
     return s
 
 
-@router.post("", status_code=201, response_model=UploadResponse)
+@router.post("", status_code=201, response_model=UploadResponse, dependencies=[AdminRequired])
 async def upload_recording(
     file: UploadFile,
     manager_id: Annotated[uuid.UUID, Form()],
