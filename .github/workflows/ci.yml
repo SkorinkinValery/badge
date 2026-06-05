@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.11.13"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --python 3.11
+
+      - name: Run ruff lint
+        run: uv run ruff check backend/
+
+      - name: Run ruff format check
+        run: uv run ruff format --check backend/
+
+  typecheck:
+    name: Type check (mypy)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.11.13"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --python 3.11
+
+      - name: Run mypy
+        run: uv run mypy backend/app --strict
+
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: badge
+          POSTGRES_PASSWORD: badge
+          POSTGRES_DB: badge
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U badge -d badge"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://badge:badge@localhost:5432/badge
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.11.13"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --python 3.11
+
+      - name: Run pytest
+        run: uv run pytest backend/tests/ -v --ignore=backend/tests/db
+
+      - name: Run Alembic migrations
+        run: uv run alembic -c backend/alembic.ini upgrade head
+
+      - name: Run DB tests
+        run: uv run pytest backend/tests/db/ -v
+
+  eval:
+    name: Eval (non-critical)
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.11.13"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install eval dependencies
+        run: uv pip install -e ".[dev,eval]" --python 3.11
+
+      - name: Check for datasets
+        id: check_datasets
+        run: |
+          if [ -d "datasets" ] && [ "$(ls -A datasets 2>/dev/null)" ]; then
+            echo "HAS_DATASETS=true" >> $GITHUB_OUTPUT
+          else
+            echo "HAS_DATASETS=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run eval scripts (only if datasets exist)
+        if: steps.check_datasets.outputs.HAS_DATASETS == 'true'
+        run: |
+          uv run python scripts/eval_wer.py || true
+          uv run python scripts/eval_kpi.py || true

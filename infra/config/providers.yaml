@@ -1,0 +1,15 @@
+# Providers configuration for Аудиобейдж MVP
+# IMPORTANT: api_key is NEVER stored here — always from environment (LLM_API_KEY, STT_API_KEY)
+# To switch provider: change active_stt / active_llm / active_crm — no code changes needed.
+
+active_stt: faster_whisper
+
+active_llm:
+  adapter: openai_compatible
+  base_url: https://api.openai.com/v1
+  model: gpt-4o-mini
+  # api_key: intentionally omitted — read from LLM_API_KEY env var
+
+active_crm: json  # json on M0-M4; google_sheets on M8
+
+default_language: ru

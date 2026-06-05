@@ -1,0 +1,5 @@
+# Caddy TLS-proxy stub for MVP
+# Replace {$DOMAIN} with actual domain in production
+{$DOMAIN:localhost} {
+    reverse_proxy api:8000
+}

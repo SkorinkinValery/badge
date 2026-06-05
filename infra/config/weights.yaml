@@ -1,0 +1,26 @@
+# Weights configuration for Аудиобейдж MVP
+# Source of truth for scoring weights — no hardcoding in application code.
+#
+# normalization_rule:
+#   proportional — weights of available KPIs are re-scaled so they sum to 1.0
+#                  (handles missing script_compliance in baseline mode)
+#   equal        — all available KPIs get equal weight regardless of yaml values
+#
+# weights: map of kpi.id -> relative weight override
+#   (if not listed here, falls back to kpi.yaml weight field)
+#
+# The scoring engine (M4) reads this file to compute weighted average score 0–100.
+
+normalization_rule: proportional
+
+weights:
+  greeting: 1.0
+  needs_discovery: 1.5
+  presentation: 1.5
+  objections: 1.5
+  price_discussed: 0.5
+  cta: 1.0
+  measurement_offered: 0.5
+  closing: 1.5
+  script_compliance: 2.0
+  tone_politeness: 1.0
