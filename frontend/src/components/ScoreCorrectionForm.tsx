@@ -58,7 +58,7 @@ export default function ScoreCorrectionForm({
         min={0}
         max={100}
         value={score}
-        onChange={(v) => setScore(v)}
+        onChange={(v) => setScore(v as number | "")}
       />
       <Group>
         <Button loading={loading} onClick={handleSave}>

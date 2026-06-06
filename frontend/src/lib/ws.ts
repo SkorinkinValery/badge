@@ -29,6 +29,11 @@ export function useRecordWs(options: UseRecordWsOptions): UseRecordWsResult {
   const { managerId, consentFlag, onPartialTranscript, onFinalTranscript, onRecordingCreated, onError } = options;
 
   const [state, setState] = useState<RecordState>("idle");
+  const stateRef = useRef<RecordState>("idle");
+  const setStateSynced = (s: RecordState) => {
+    stateRef.current = s;
+    setState(s);
+  };
   const [transcript, setTranscript] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -44,7 +49,7 @@ export function useRecordWs(options: UseRecordWsOptions): UseRecordWsResult {
         setTranscript((prev) => prev + (prev ? " " : "") + text);
         if (msg.is_final) {
           onFinalTranscript?.(text);
-          setState("done");
+          setStateSynced("done");
         } else {
           onPartialTranscript?.(text);
         }
@@ -57,7 +62,7 @@ export function useRecordWs(options: UseRecordWsOptions): UseRecordWsResult {
       } else if (msg.type === "error") {
         const errMsg = msg.message as string;
         setErrorMessage(errMsg);
-        setState("error");
+        setStateSynced("error");
         onError?.(errMsg);
       }
     } catch {
@@ -66,7 +71,7 @@ export function useRecordWs(options: UseRecordWsOptions): UseRecordWsResult {
   }, [onPartialTranscript, onFinalTranscript, onRecordingCreated, onError]);
 
   const start = useCallback(async () => {
-    if (state !== "idle") return;
+    if (stateRef.current !== "idle") return;
     setErrorMessage(null);
     setTranscript("");
     seqRef.current = 0;
@@ -77,7 +82,7 @@ export function useRecordWs(options: UseRecordWsOptions): UseRecordWsResult {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setErrorMessage("Не удалось получить доступ к микрофону");
-      setState("error");
+      setStateSynced("error");
       return;
     }
 
@@ -100,12 +105,13 @@ export function useRecordWs(options: UseRecordWsOptions): UseRecordWsResult {
 
     ws.onerror = () => {
       setErrorMessage("Ошибка соединения");
-      setState("error");
+      setStateSynced("error");
     };
 
     ws.onclose = () => {
-      if (state === "recording" || state === "stopping") {
-        setState("done");
+      const cur = stateRef.current;
+      if (cur === "recording" || cur === "stopping") {
+        setStateSynced("done");
       }
     };
 
@@ -130,12 +136,12 @@ export function useRecordWs(options: UseRecordWsOptions): UseRecordWsResult {
     };
 
     recorder.start(CHUNK_INTERVAL_MS);
-    setState("recording");
-  }, [state, managerId, consentFlag, _handleWsMessage]);
+    setStateSynced("recording");
+  }, [managerId, consentFlag, _handleWsMessage]);
 
   const stop = useCallback(() => {
-    if (state !== "recording") return;
-    setState("stopping");
+    if (stateRef.current !== "recording") return;
+    setStateSynced("stopping");
 
     recorderRef.current?.stop();
 
@@ -143,7 +149,7 @@ export function useRecordWs(options: UseRecordWsOptions): UseRecordWsResult {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "stop" }));
     }
-  }, [state]);
+  }, []);
 
   return { state, transcript, start, stop, errorMessage };
 }

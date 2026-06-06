@@ -88,9 +88,11 @@ describe("RecordPage", () => {
     // @ts-ignore
     global.MediaRecorder = MockMediaRecorder;
 
-    global.navigator.mediaDevices = {
-      getUserMedia: vi.fn().mockResolvedValue({}),
-    } as unknown as MediaDevices;
+    Object.defineProperty(global.navigator, "mediaDevices", {
+      value: { getUserMedia: vi.fn().mockResolvedValue({}) },
+      writable: true,
+      configurable: true,
+    });
 
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
