@@ -52,7 +52,7 @@ packages = ["backend/app"]
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
 asyncio_mode = "auto"
-pythonpath = ["backend"]
+pythonpath = ["backend", "."]
 markers = [
     "db: marks tests that require a live Postgres database",
     "contract: marks contract tests for port implementations",

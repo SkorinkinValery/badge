@@ -21,8 +21,14 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Datasets (large files)
-datasets/
+# Datasets — track metadata/annotations, ignore binary audio
+datasets/**/*.wav
+datasets/**/*.mp3
+datasets/**/*.ogg
+datasets/**/*.opus
+datasets/**/*.flac
+datasets/**/*.m4a
+datasets/**/*.webm
 
 # Secrets
 *.pem

@@ -126,3 +126,4 @@ jobs:
         run: |
           uv run python scripts/eval_wer.py || true
           uv run python scripts/eval_kpi.py || true
+          uv run python scripts/regression_harness.py || true
