@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   Badge,
   Card,
@@ -12,7 +12,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { authHeaders, getToken } from "@/lib/auth";
+import { authHeaders } from "@/lib/auth";
 
 interface Segment {
   start: number;
@@ -42,30 +42,55 @@ interface Analysis {
   weights_version: string | null;
 }
 
+interface Recording {
+  id: string;
+  status: string;
+  retention_until: string | null;
+}
+
 export default function RecordingCard() {
-  const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
 
+  const [recording, setRecording] = useState<Recording | null>(null);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
 
   useEffect(() => {
-    if (!getToken()) { router.push("/login"); return; }
     const h = authHeaders();
     Promise.all([
+      fetch(`/api/recordings/${id}`, { headers: h }).then((r) => r.json()),
       fetch(`/api/recordings/${id}/transcript`, { headers: h }).then((r) => r.json()),
       fetch(`/api/recordings/${id}/analysis`, { headers: h }).then((r) => r.json()),
-    ]).then(([t, a]) => {
+    ]).then(([rec, t, a]) => {
+      setRecording(rec as Recording);
       setTranscript(t as Transcript);
       setAnalysis(a as Analysis);
     });
-  }, [id, router]);
+  }, [id]);
 
   return (
     <Container mt={40}>
       <Title order={2} mb="md">Запись {id}</Title>
       <Stack>
+        {recording && (
+          <Card withBorder>
+            <Group gap="xl">
+              <Group gap="xs">
+                <Text fw={600}>Статус:</Text>
+                <Badge>{recording.status}</Badge>
+              </Group>
+              <Group gap="xs">
+                <Text fw={600}>Хранить до:</Text>
+                <Text>
+                  {recording.retention_until
+                    ? new Date(recording.retention_until).toLocaleString("ru-RU")
+                    : "—"}
+                </Text>
+              </Group>
+            </Group>
+          </Card>
+        )}
         {analysis && (
           <Card withBorder>
             <Group mb="xs">

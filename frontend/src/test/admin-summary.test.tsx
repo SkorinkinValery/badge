@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
-import SummaryPage from "@/app/admin/summary/page";
+import SummaryPage from "@/app/(app)/admin/summary/page";
 
 vi.mock("@/lib/auth", () => ({
   getToken: () => "admin-token",

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Alert,
   Button,
@@ -12,7 +11,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { authHeaders, getToken } from "@/lib/auth";
+import { authHeaders } from "@/lib/auth";
 
 interface CrmSettings {
   active_crm: string;
@@ -21,22 +20,17 @@ interface CrmSettings {
 }
 
 export default function SettingsPage() {
-  const router = useRouter();
   const [settings, setSettings] = useState<CrmSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
     fetch("/api/admin/settings", { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => setSettings(data as CrmSettings))
       .catch(() => setError("Не удалось загрузить настройки"));
-  }, [router]);
+  }, []);
 
   if (!settings) return null;
 

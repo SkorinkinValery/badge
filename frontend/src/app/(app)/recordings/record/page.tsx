@@ -17,7 +17,7 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
-import { getToken } from "@/lib/auth";
+import { authHeaders } from "@/lib/auth";
 import { useRecordWs } from "@/lib/ws";
 
 interface Manager {
@@ -35,17 +35,11 @@ export default function RecordPage() {
   const [recordingId, setRecordingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
-    fetch("/api/managers", {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    })
+    fetch("/api/managers", { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => setManagers(data as Manager[]))
       .catch(() => {});
-  }, [router]);
+  }, []);
 
   const { state, transcript, start, stop, errorMessage } = useRecordWs({
     managerId: managerId ?? "",

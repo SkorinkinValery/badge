@@ -14,7 +14,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { authHeaders, getToken } from "@/lib/auth";
+import { authHeaders } from "@/lib/auth";
 
 interface Script {
   id: string;
@@ -41,12 +41,8 @@ export default function ScriptsPage() {
   };
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
     loadScripts();
-  }, [router]);
+  }, []);
 
   const handleUpload = async () => {
     const file = fileRef.current?.files?.[0];

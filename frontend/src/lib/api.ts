@@ -1,4 +1,4 @@
-import { authHeaders } from "./auth";
+import { authHeaders, clearToken } from "./auth";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -12,6 +12,10 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     },
   });
   if (!resp.ok) {
+    if (resp.status === 401) {
+      clearToken();
+      window.location.href = "/login";
+    }
     const body = await resp.json().catch(() => ({}));
     throw new Error(body?.detail ?? `HTTP ${resp.status}`);
   }
