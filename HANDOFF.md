@@ -18,12 +18,26 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M6 — Админка: менеджеры, скрипты, дневная сводка** | ✅ | `a10c5e0` |
 | **M7 — MicSource near-realtime** | ✅ | `e09924c` |
 | **M8 — Экспорт результатов (CRM)** | ✅ | `b69b651` |
-| **M9 — Self-host LLM (vLLM + Qwen2.5) + RU-облако fallback** | ✅ | текущий |
-| M10 | Не начато | — |
+| **M9 — Self-host LLM (vLLM + Qwen2.5) + RU-облако fallback** | ✅ | `7c4d90a` |
+| **M10 — Data & Metrics (eval_wer, eval_kpi, regression, calibrate, few_shot)** | ✅ | текущий |
 
-**Тесты на текущий момент: 511 backend + 49 frontend** — зелёные; ruff + mypy --strict — зелёные.
+**Тесты на текущий момент: 561 backend + 49 frontend** — зелёные; ruff + mypy --strict — зелёные.
 
-### Что сделано в M9 (последний milestone)
+### Что сделано в M10 (последний milestone)
+- **`scripts/dataset.py`** — `DatasetEntry`/`GoldenTranscript`/`KpiLabel`/`EntryMeta` Pydantic-схемы; `load_dataset(dir)` — загрузка набора из `datasets/<id>/{meta,golden_transcript,kpi_labels}.json`; валидация KPI-ключей по `kpi.yaml`; пустой/отсутствующий каталог → `[]`.
+- **`scripts/eval_wer.py`** — `compute_wer(hypothesis, reference, normalize)` через jiwer; `eval_wer_dataset(dir, hypothesis_fn, normalize)` → `WerResult(n_records, wer, per_record)`.
+- **`scripts/eval_kpi.py`** — `compute_kpi_metrics(pred, gold, fact_kpi_ids)` — MAE для scale-KPI, precision/recall/F1 для fact-KPI; `eval_kpi_dataset` — агрегирование по датасету.
+- **`scripts/regression_harness.py`** — `compare_metrics(current, baseline, thresholds)` с порогами `wer=0.05, kpi_mae=0.50`; `run_harness` сохраняет baseline при первом запуске, предупреждает о регрессии без raise; пустой датасет → `None` (skip).
+- **`scripts/few_shot.py`** — `load_few_shot_examples(dir, n=3)` → `[{transcript, output}]`; пустой датасет → `[]`; инжектируется в промпт через `build_prompt(transcript, few_shot=examples)`.
+- **`scripts/calibrate.py`** — `calibrate(candidates, datasets_dir, eval_fn, report_file)` → `CalibrationResult(best_candidate, best_score, ranked)`; сохраняет JSON-отчёт.
+- **`datasets/.gitignore`** — исключает аудиофайлы; `pyproject.toml` — `pythonpath = ["backend", "."]`; `.gitignore` — треки `datasets/**/*.wav` вместо `datasets/`.
+- **`.github/workflows/ci.yml`** — шаг `regression_harness.py` в eval.
+- **Тесты** — `tests/scripts/test_dataset_loader.py` (9), `test_eval_wer.py` (9), `test_eval_kpi.py` (8), `test_regression_harness.py` (7), `test_eval_ci_guard.py` (6), `test_calibrate.py` (5); `tests/adapters/analyzer/test_few_shot.py` (6).
+
+### Новые зависимости в M10
+- **backend:** `jiwer>=3.0` (WER-вычисление, уже был в pyproject через M10)
+
+### Что сделано в M9 (предпоследний milestone)
 - **`infra/docker-compose.yml`** — сервис `vllm` (профиль `self-host`, GPU-резервация, OpenAI-совместимый порт 8000, том модели).
 - **`infra/config/providers.yaml`** — секция `llm_profiles` (cloud / self_host / ru_cloud) с параметрами base_url, model, vram_gb, gpu_memory_utilization.
 - **`config/settings.py`** — поле `LLMProviderConfig.structured_output_mode: str` ("json_object" | "guided_json").
@@ -144,15 +158,16 @@ docs/
   PLAN.md  TZ-audiobadge-mvp.md  dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M10
+## 5. Следующий шаг
 
-**Запустить агента:** `Реализуй milestone M10 по промпту docs/dev/implement-milestone.md`
+Все 10 milestone (M0–M10) завершены. MVP-ядро готово.
 
-M10 — **Data & Metrics** — аналитика, дашборды, retention-джобы, экспорт отчётов.
-Детали: `docs/dev/tasks/M10-data-metrics.md`.
-
-**Перед M10:**
-- Поднять окружение: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
+**Возможные дальнейшие шаги:**
+- Раскатка на staging/prod (Docker Compose → k8s или аналог).
+- Наполнение `datasets/` реальными размеченными звонками и запуск `scripts/eval_wer.py` + `scripts/eval_kpi.py`.
+- Калибровка промптов: `scripts/calibrate.py` с реальным `eval_fn`.
+- Self-host vLLM: `docker compose --profile self-host up vllm`.
+- Bitrix24: задать `field_mapping` в `providers.yaml`, переключить `active_crm: bitrix24`.
 
 ## 6. Команды разработки
 
