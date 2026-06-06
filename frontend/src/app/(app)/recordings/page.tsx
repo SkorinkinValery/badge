@@ -9,7 +9,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { authHeaders, getToken } from "@/lib/auth";
+import { authHeaders } from "@/lib/auth";
 
 interface Recording {
   id: string;
@@ -40,17 +40,13 @@ export default function RecordingsPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
     fetch("/api/recordings", { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => {
         setRecordings(data as Recording[]);
         setLoaded(true);
       });
-  }, [router]);
+  }, []);
 
   if (!loaded) return null;
 

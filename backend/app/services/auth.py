@@ -53,3 +53,17 @@ def seed_admin_if_missing(repo: UserRepo, login: str, password: str, role: str) 
     if repo.find_by_login(login) is not None:
         return
     repo.create_user(login=login, password_hash=hash_password(password), role=role)
+
+
+class AsyncUserRepo(Protocol):
+    async def find_by_login(self, login: str) -> Any | None: ...
+    async def create_user(self, login: str, password_hash: str, role: str) -> Any: ...
+
+
+async def async_seed_admin_if_missing(
+    repo: AsyncUserRepo, login: str, password: str, role: str
+) -> None:
+    """Async variant of seed_admin_if_missing for use in async lifespans."""
+    if await repo.find_by_login(login) is not None:
+        return
+    await repo.create_user(login=login, password_hash=hash_password(password), role=role)

@@ -103,7 +103,7 @@ describe("RecordPage", () => {
   });
 
   it("renders manager selector and consent checkbox", async () => {
-    const { default: RecordPage } = await import("@/app/recordings/record/page");
+    const { default: RecordPage } = await import("@/app/(app)/recordings/record/page");
     wrap(<RecordPage />);
     await waitFor(() => {
       expect(screen.getByText(/согласие/i)).toBeTruthy();
@@ -111,7 +111,7 @@ describe("RecordPage", () => {
   });
 
   it("shows start button disabled before consent", async () => {
-    const { default: RecordPage } = await import("@/app/recordings/record/page");
+    const { default: RecordPage } = await import("@/app/(app)/recordings/record/page");
     wrap(<RecordPage />);
     await waitFor(() => screen.getByText(/согласие/i));
     const startBtn = screen.getByRole("button", { name: /запись/i });
@@ -119,7 +119,7 @@ describe("RecordPage", () => {
   });
 
   it("enables start after consent checked and manager selected", async () => {
-    const { default: RecordPage } = await import("@/app/recordings/record/page");
+    const { default: RecordPage } = await import("@/app/(app)/recordings/record/page");
     wrap(<RecordPage />);
     await waitFor(() => screen.getByText(/согласие/i));
 
@@ -132,7 +132,7 @@ describe("RecordPage", () => {
   });
 
   it("requests microphone access on start", async () => {
-    const { default: RecordPage } = await import("@/app/recordings/record/page");
+    const { default: RecordPage } = await import("@/app/(app)/recordings/record/page");
     wrap(<RecordPage />);
     await waitFor(() => screen.getByText(/согласие/i));
 
@@ -142,7 +142,7 @@ describe("RecordPage", () => {
   });
 
   it("shows recording indicator while recording", async () => {
-    const { default: RecordPage } = await import("@/app/recordings/record/page");
+    const { default: RecordPage } = await import("@/app/(app)/recordings/record/page");
     wrap(<RecordPage />);
     await waitFor(() => screen.getByText(/согласие/i));
     // Not recording initially
@@ -171,7 +171,7 @@ describe("RecordPage", () => {
   });
 
   it("stop closes WS and sends stop message", async () => {
-    const { default: RecordPage } = await import("@/app/recordings/record/page");
+    const { default: RecordPage } = await import("@/app/(app)/recordings/record/page");
     // This tests that the stop flow sends a stop message and closes the WS
     // Tested via MockWebSocket — the component will call ws.send({ type: 'stop' })
     // and ws.close() when stop is triggered

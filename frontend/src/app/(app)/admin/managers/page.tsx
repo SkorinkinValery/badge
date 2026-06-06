@@ -11,7 +11,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { authHeaders, getToken } from "@/lib/auth";
+import { authHeaders } from "@/lib/auth";
 
 interface Manager {
   id: string;
@@ -28,17 +28,13 @@ export default function ManagersPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
     fetch("/api/managers", { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => {
         setManagers(data as Manager[]);
         setLoaded(true);
       });
-  }, [router]);
+  }, []);
 
   if (!loaded) return null;
 

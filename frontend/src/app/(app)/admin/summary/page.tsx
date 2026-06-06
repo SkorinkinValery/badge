@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   Badge,
   Card,
@@ -16,7 +15,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { authHeaders, getToken } from "@/lib/auth";
+import { authHeaders } from "@/lib/auth";
 
 interface Manager {
   id: string;
@@ -52,7 +51,6 @@ function formatDuration(seconds: number): string {
 }
 
 export default function SummaryPage() {
-  const router = useRouter();
   const [managers, setManagers] = useState<Manager[]>([]);
   const [managerId, setManagerId] = useState<string | null>(null);
   const [date, setDate] = useState<string>(
@@ -62,10 +60,6 @@ export default function SummaryPage() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.push("/login");
-      return;
-    }
     fetch("/api/managers", { headers: authHeaders() })
       .then((r) => r.json())
       .then((data: Manager[]) => {
@@ -73,7 +67,7 @@ export default function SummaryPage() {
         if (data.length > 0) setManagerId(data[0].id);
         setLoaded(true);
       });
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (!managerId || !date) return;

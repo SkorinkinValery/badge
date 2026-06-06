@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     mic_window_bytes: int = Field(default=32_000, alias="MIC_WINDOW_BYTES")
     mic_max_bytes: int = Field(default=10_485_760, alias="MIC_MAX_BYTES")
 
+    # Retention
+    retention_days: int = Field(default=90, alias="RETENTION_DAYS")
+
     model_config = {"populate_by_name": True, "extra": "ignore"}
 
 

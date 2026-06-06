@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
-import RecordingCard from "@/app/recordings/[id]/page";
+import RecordingCard from "@/app/(app)/recordings/[id]/page";
 
 vi.mock("@/lib/auth", () => ({
   getToken: () => "test-token",
