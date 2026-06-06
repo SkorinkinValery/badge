@@ -43,7 +43,7 @@ llm_profiles:
     model: yandexgpt-lite/latest
     # api_key: read from LLM_API_KEY env var (IAM token or API key)
 
-active_crm: google_sheets  # json → google_sheets (M8)
+active_crm: json  # для локального тестирования; для прода: json → google_sheets / bitrix24
 
 crm:
   google_sheets:

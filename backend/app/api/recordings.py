@@ -6,12 +6,13 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AdminRequired, AnyUserRequired
+from app.config.settings import Settings, get_settings
 from app.db.models.analysis import AnalysisModel
 from app.db.models.recording import RecordingModel
 from app.db.models.transcript import TranscriptModel
@@ -175,3 +176,28 @@ async def get_recording(
     if rec is None:
         raise HTTPException(status_code=404, detail="Recording not found")
     return RecordingOut.model_validate(rec, from_attributes=True)
+
+
+class ProcessResponse(BaseModel):
+    recording_id: uuid.UUID
+    status: str
+
+
+@router.post("/{recording_id}/process", status_code=202, response_model=ProcessResponse, dependencies=[AdminRequired])
+async def process_recording(
+    recording_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ProcessResponse:
+    """Manually trigger the processing pipeline for a recording (re-trigger failed/stuck jobs)."""
+    result = await session.execute(
+        select(RecordingModel).where(RecordingModel.id == recording_id)
+    )
+    rec = result.scalar_one_or_none()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    from app.workers.runner import run_job  # lazy — heavy psycopg/langgraph import
+    background_tasks.add_task(run_job, recording_id, settings.database_url)
+    return ProcessResponse(recording_id=recording_id, status="accepted")

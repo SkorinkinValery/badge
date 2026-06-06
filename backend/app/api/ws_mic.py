@@ -56,6 +56,17 @@ async def _run_stt(stt: Any, payload: AudioPayload) -> str:
     return str(transcript.full_text)
 
 
+def _kick_pipeline(recording_id: uuid.UUID, db_url: str) -> None:
+    """Fire-and-forget: run the processing pipeline in a background thread."""
+    import concurrent.futures
+
+    from app.workers.runner import run_job  # lazy — heavy psycopg/langgraph import
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    executor.submit(run_job, recording_id, db_url)
+    executor.shutdown(wait=False)
+
+
 async def _create_recording(
     session_factory: Any,
     manager_id: uuid.UUID,
@@ -229,6 +240,7 @@ async def ws_mic(
                 if recording_id is not None:
                     await _set_status(session_factory, recording_id, RecordingStatus.QUEUED)
                     log.info("ws_mic.queued", recording_id=str(recording_id))
+                    _kick_pipeline(recording_id, settings.database_url)
 
                 await websocket.close()
                 return

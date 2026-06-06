@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +48,8 @@ async def upload_recording(
     consent_flag: Annotated[bool, Form()],
     session: Annotated[AsyncSession, Depends(get_session)],
     storage: Annotated[ObjectStorage, Depends(_get_storage)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    background_tasks: BackgroundTasks,
 ) -> UploadResponse:
     if not consent_flag:
         raise HTTPException(status_code=422, detail="consent_flag is required for recordings")
@@ -83,5 +85,8 @@ async def upload_recording(
     )
     session.add(rec)
     await session.commit()
+
+    from app.workers.runner import run_job  # lazy — heavy psycopg/langgraph import
+    background_tasks.add_task(run_job, recording_id, settings.database_url)
 
     return UploadResponse(recording_id=recording_id, status=RecordingStatus.QUEUED.value)
