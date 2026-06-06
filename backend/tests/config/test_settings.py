@@ -62,7 +62,7 @@ def test_providers_config_parses_active_crm() -> None:
     from app.config.settings import load_providers_config
 
     cfg = load_providers_config(PROVIDERS_YAML)
-    assert cfg.active_crm == "json"
+    assert cfg.active_crm == "google_sheets"
 
 
 def test_providers_config_default_language_is_ru() -> None:

@@ -1,9 +1,11 @@
-"""Contract tests for CRMExporter port — M1-T3."""
+"""Contract tests for CRMExporter port — M1-T3 / M8."""
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,12 +14,40 @@ from app.core.ports import AnalysisResult, CRMExporter, ExportResult
 from tests.contract.helpers import assert_valid_export_result
 
 
+def _mock_gs_exporter() -> CRMExporter:
+    from app.adapters.crm.google_sheets import GoogleSheetsExporter
+
+    exporter = GoogleSheetsExporter(spreadsheet_id="test-id")
+    ws = MagicMock()
+    ws.append_row.return_value = None
+    exporter._get_worksheet = lambda: ws  # type: ignore[method-assign]
+    return exporter
+
+
+def _mock_webhook_exporter() -> CRMExporter:
+    from app.adapters.crm.webhook import GenericWebhookExporter
+
+    return GenericWebhookExporter(url="https://example.com/hook")
+
+
+def _mock_bitrix24_exporter() -> CRMExporter:
+    from app.adapters.crm.bitrix24 import Bitrix24Exporter
+
+    return Bitrix24Exporter(webhook_url="https://portal.bitrix24.ru/rest/1/token/")
+
+
 def get_crm_impls() -> list[tuple[str, CRMExporter]]:
-    try:
+    impls: list[tuple[str, CRMExporter]] = []
+    with contextlib.suppress(ImportError):
         from app.adapters.crm.json_exporter import JSONExporter
-        return [("JSONExporter", JSONExporter())]
-    except ImportError:
-        return []
+        impls.append(("JSONExporter", JSONExporter()))
+    with contextlib.suppress(ImportError):
+        impls.append(("GoogleSheetsExporter", _mock_gs_exporter()))
+    with contextlib.suppress(ImportError):
+        impls.append(("GenericWebhookExporter", _mock_webhook_exporter()))
+    with contextlib.suppress(ImportError):
+        impls.append(("Bitrix24Exporter", _mock_bitrix24_exporter()))
+    return impls
 
 
 _impls = get_crm_impls()
@@ -41,22 +71,34 @@ _SAMPLE_ANALYSIS = AnalysisResult(
 )
 
 
+def _run_export(impl: CRMExporter) -> ExportResult:
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"result": 1}
+    mock_resp.raise_for_status.return_value = None
+    with (
+        patch("app.adapters.crm.webhook.httpx") as mhx_wh,
+        patch("app.adapters.crm.bitrix24.httpx") as mhx_b24,
+    ):
+        mhx_wh.post.return_value = mock_resp
+        mhx_b24.post.return_value = mock_resp
+        return impl.export(_SAMPLE_ANALYSIS, _SAMPLE_RECORDING)
+
+
 @pytest.mark.contract
 @pytest.mark.skipif(not _impls, reason="No CRMExporter implementations registered yet")
 @pytest.mark.parametrize("impl", [impl for _, impl in _impls], ids=_ids)
 class TestCRMExporterContract:
     def test_export_returns_export_result(self, impl: CRMExporter) -> None:
-        result = impl.export(_SAMPLE_ANALYSIS, _SAMPLE_RECORDING)
+        result = _run_export(impl)
         assert isinstance(result, ExportResult)
 
     def test_export_result_has_success_flag(self, impl: CRMExporter) -> None:
-        result = impl.export(_SAMPLE_ANALYSIS, _SAMPLE_RECORDING)
+        result = _run_export(impl)
         assert_valid_export_result(result)
 
     def test_export_is_idempotent(self, impl: CRMExporter) -> None:
-        """Exporting the same data twice should both succeed without error."""
-        r1 = impl.export(_SAMPLE_ANALYSIS, _SAMPLE_RECORDING)
-        r2 = impl.export(_SAMPLE_ANALYSIS, _SAMPLE_RECORDING)
+        r1 = _run_export(impl)
+        r2 = _run_export(impl)
         assert r1.success and r2.success
 
     def test_impl_satisfies_protocol(self, impl: CRMExporter) -> None:

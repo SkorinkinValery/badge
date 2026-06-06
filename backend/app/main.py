@@ -49,6 +49,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = _settings
     app.state.session_factory = session_factory
 
+    # CRM config — mutable in-memory state (GET/PUT /api/admin/settings)
+    try:
+        from app.config.settings import load_providers_config
+        providers = load_providers_config(_settings.providers_yaml_path)
+        app.state.crm_config = {
+            "active_crm": providers.active_crm,
+            "params": providers.crm_params(),
+        }
+    except Exception:
+        app.state.crm_config = {"active_crm": "json", "params": {}}
+
     # Override settings dependency to pull from app.state (enables per-app config in tests)
     app.dependency_overrides[get_settings] = _make_get_settings_dep(_settings)
 

@@ -22,6 +22,7 @@ def run_job(
     recording_id: uuid.UUID,
     db_url: str,
     fail_at_stage: str | None = None,
+    crm_config: dict[str, object] | None = None,
 ) -> None:
     """Run the processing graph for a single recording.
 
@@ -51,6 +52,17 @@ def run_job(
         thread_id = str(recording_id)
         config = {"configurable": {"thread_id": thread_id}}
 
+        _crm: dict[str, object]
+        if crm_config is not None:
+            _crm = crm_config
+        else:
+            try:
+                from app.config.settings import load_providers_config
+                providers = load_providers_config()
+                _crm = {"active_crm": providers.active_crm, "params": providers.crm_params()}
+            except Exception:
+                _crm = {"active_crm": "json", "params": {}}
+
         initial_state = {
             "recording_id": thread_id,
             "status": RecordingStatus.QUEUED.value,
@@ -62,6 +74,7 @@ def run_job(
             "score": None,
             "verdict": None,
             "export_result": None,
+            "crm_config": _crm,
         }
 
         log.info("runner.start", recording_id=thread_id)

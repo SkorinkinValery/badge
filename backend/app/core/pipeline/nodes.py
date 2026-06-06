@@ -195,7 +195,7 @@ def make_nodes(
         import uuid
         from datetime import UTC, datetime
 
-        from app.adapters.crm.json_exporter import JSONExporter
+        from app.adapters.crm.registry import get_exporter
         from app.core.domain.recording import Recording
         from app.core.ports import AnalysisResult
 
@@ -216,8 +216,14 @@ def make_nodes(
             summary=ar.get("summary") or "",
             kpi_json=ar.get("kpi_json") or {},
         )
+
+        crm_cfg: dict[str, Any] = state.get("crm_config") or {}
+        crm_name: str = str(crm_cfg.get("active_crm") or "json")
+        crm_params: dict[str, Any] = crm_cfg.get("params") or {}
+        exporter = get_exporter(crm_name, crm_params)
+
         try:
-            result = JSONExporter().export(analysis, recording)
+            result = exporter.export(analysis, recording)
         except Exception as exc:
             log.error("stage.exporter.error", error=str(exc))
             return _fail_state(state, "exporting", error=f"Export error: {exc}")

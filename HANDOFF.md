@@ -16,12 +16,32 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M4 — OpenAICompatibleAnalyzer + анализ + scoring + API** | ✅ | `2cca3d6` |
 | **M5 — Auth (JWT) + UI (Next.js + Mantine)** | ✅ | `9ce778c` |
 | **M6 — Админка: менеджеры, скрипты, дневная сводка** | ✅ | `a10c5e0` |
-| **M7 — MicSource near-realtime** | ✅ | текущий |
-| M8–M10 | Не начато | — |
+| **M7 — MicSource near-realtime** | ✅ | `e09924c` |
+| **M8 — Экспорт результатов (CRM)** | ✅ | текущий |
+| M9–M10 | Не начато | — |
 
-**Тесты на текущий момент: 439 backend + 44 frontend** — зелёные; ruff + mypy --strict — зелёные.
+**Тесты на текущий момент: 462 backend + 49 frontend** — зелёные; ruff + mypy --strict — зелёные.
 
-### Что сделано в M7 (последний milestone)
+### Что сделано в M8 (последний milestone)
+- **`payload.py`** — `build_export_payload(analysis, recording, score=None, verdict=None) → dict`. `score`/`verdict` — опциональные параметры (не поля AnalysisResult).
+- **`google_sheets.py`** — `GoogleSheetsExporter(spreadsheet_id, worksheet_name, credentials_json)` — gspread, ADC-fallback.
+- **`webhook.py`** — `GenericWebhookExporter(url, headers, timeout)` — httpx POST + raise_for_status.
+- **`bitrix24.py`** — `Bitrix24Exporter(webhook_url, field_mapping)` — REST webhook, опциональный маппинг полей.
+- **`registry.py`** — `get_exporter(name, cfg)`, `AVAILABLE_PROVIDERS`, `UnknownCrmProviderError` — единая точка выбора адаптера по конфигу.
+- **`nodes.py`** — `exporting`-узел использует `registry.get_exporter` вместо хардкода `JSONExporter`; CRM-конфиг приходит из `state["crm_config"]`.
+- **`state.py`** — добавлено поле `crm_config: dict | None`.
+- **`runner.py`** — принимает `crm_config` параметром (fallback — `load_providers_config()`), передаёт в initial_state.
+- **`providers.yaml`** — `active_crm: google_sheets` + секция `crm` с параметрами для каждого провайдера.
+- **`admin.py`** — `GET/PUT /api/admin/settings` (смена активного CRM, in-memory, требует роль admin).
+- **`settings.py`** — `ProvidersConfig.crm: dict[str, dict]` + метод `crm_params()`.
+- **`main.py`** — `app.state.crm_config` инициализируется из `providers.yaml` при старте.
+- **UI** — `frontend/src/app/admin/settings/page.tsx` (Select провайдера + поля params для gs/webhook/b24).
+- **Контрактный тест** — `test_crm_exporter.py` покрывает все 4 адаптера через мок HTTP/gspread.
+
+### Новые зависимости в M8
+- **backend:** `gspread==6.2.1` (через `uv add gspread`)
+
+### Что сделано в M7 (последний закоммиченный milestone)
 - **Протокол WS** — Pydantic-DTO (`start`/`chunk`/`stop`/`ack`/`partial_transcript`/`error`), `SessionProtocol` (монотонность seq, порядок), `parse_client_msg` — `app/adapters/audio/mic_protocol.py`.
 - **Буфер чанков** — `ChunkBuffer` (оконная агрегация config-driven, backpressure, дубликаты seq) — `app/services/mic_buffer.py`.
 - **MicSource** — адаптер `AudioSource` для микрофонного ввода, проходит контракт наравне с `FileSource` — `app/adapters/audio/mic_source.py`.
@@ -80,7 +100,7 @@ backend/app/
     audio/      # file_stub, file_source, badge_source, telephony_source, mic_source, mic_protocol
     stt/        # stub_stt, faster_whisper_engine, config, mapping
     analyzer/   # stub_analyzer, openai_compatible, schema, prompt
-    crm/        # json_exporter
+    crm/        # json_exporter, payload, google_sheets, webhook, bitrix24, registry
   services/     # storage, ingest, normalize, score, auth, scripts, process, daily_summary, mic_buffer
   db/
     models/         # analysis, recording, transcript, manager, script, user
@@ -103,15 +123,15 @@ docs/
   PLAN.md  TZ-audiobadge-mvp.md  dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M8
+## 5. Следующий шаг — M9
 
-**Запустить агента:** `Реализуй milestone M8 по промпту docs/dev/implement-milestone.md`
+**Запустить агента:** `Реализуй milestone M9 по промпту docs/dev/implement-milestone.md`
 
-M8 — **Экспорт результатов** (`GoogleSheetsExporter` → `GenericWebhookExporter` → `Bitrix24Exporter`).
-Детали: `docs/dev/tasks/M8-export-sheets.md`.
+M9 — **Self-host LLM (vLLM + Qwen2.5)** — замена `gpt-4o-mini` на локальную модель под ПДн-требования.
+Детали: `docs/dev/tasks/M9-*.md`.
 
-**Перед M8:**
-- Нужен Google-аккаунт / сервисный аккаунт + ID таблицы (см. открытые вопросы п.2).
+**Перед M9:**
+- GPU / объём VRAM под Qwen2.5 (см. открытые вопросы п.3).
 - Поднять окружение: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
 
 ## 6. Команды разработки

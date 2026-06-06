@@ -20,6 +20,19 @@ active_llm:
   model: gpt-4o-mini
   # api_key: intentionally omitted — read from LLM_API_KEY env var
 
-active_crm: json  # json on M0-M4; google_sheets on M8
+active_crm: google_sheets  # json → google_sheets (M8)
+
+crm:
+  google_sheets:
+    spreadsheet_id: ""      # set via env or admin UI; required in production
+    worksheet_name: "Результаты"
+    # credentials_json: null  # service account dict; null = use ADC / GOOGLE_APPLICATION_CREDENTIALS
+  webhook:
+    url: ""                 # required when active_crm: webhook
+    headers: {}
+    timeout: 10.0
+  bitrix24:
+    webhook_url: ""         # required when active_crm: bitrix24
+    # field_mapping: {}     # optional Bitrix24 field remapping
 
 default_language: ru

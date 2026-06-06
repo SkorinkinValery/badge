@@ -18,3 +18,4 @@ class PipelineState(TypedDict, total=False):
     score: float | None
     verdict: str | None
     export_result: dict[str, Any] | None
+    crm_config: dict[str, Any] | None

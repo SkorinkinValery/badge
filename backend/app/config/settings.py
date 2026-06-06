@@ -32,7 +32,12 @@ class ProvidersConfig(BaseModel):
     active_stt: str = "faster_whisper"
     active_llm: LLMProviderConfig = Field(default_factory=LLMProviderConfig)
     active_crm: str = "json"
+    crm: dict[str, dict[str, object]] = Field(default_factory=dict)
     default_language: str = "ru"
+
+    def crm_params(self) -> dict[str, object]:
+        """Return config dict for the active CRM provider."""
+        return dict(self.crm.get(self.active_crm) or {})
 
 
 def load_providers_config(
