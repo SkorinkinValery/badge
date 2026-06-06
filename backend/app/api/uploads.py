@@ -21,7 +21,6 @@ from app.services.storage import ObjectStorage
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
-_DEFAULT_RETENTION_DAYS = 90
 _MAX_FILE_BYTES = 200 * 1024 * 1024  # 200 MB
 
 
@@ -81,7 +80,7 @@ async def upload_recording(
         audio_path=audio_key,
         status=RecordingStatus.QUEUED.value,
         created_at=now,
-        retention_until=now + timedelta(days=_DEFAULT_RETENTION_DAYS),
+        retention_until=now + timedelta(days=settings.retention_days),
     )
     session.add(rec)
     await session.commit()

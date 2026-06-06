@@ -92,3 +92,7 @@ class ObjectStorage:
             ExpiresIn=expiry,
         )
         return url
+
+    def delete_object(self, key: str) -> None:
+        """Delete a single object from the bucket. No-op if key does not exist."""
+        self._client.delete_object(Bucket=self._bucket, Key=key)
