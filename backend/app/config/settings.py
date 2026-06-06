@@ -24,6 +24,8 @@ class LLMProviderConfig(BaseModel):
     model: str = "gpt-4o-mini"
     # api_key comes from env (LLM_API_KEY), never stored in yaml
     api_key: str | None = None
+    # "json_object" for cloud OpenAI; "guided_json" for vLLM structured decoding
+    structured_output_mode: str = "json_object"
 
 
 class ProvidersConfig(BaseModel):

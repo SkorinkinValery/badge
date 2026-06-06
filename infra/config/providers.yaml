@@ -20,6 +20,29 @@ active_llm:
   model: gpt-4o-mini
   # api_key: intentionally omitted — read from LLM_API_KEY env var
 
+# LLM provider profiles — switch active_llm.base_url+model, no code changes needed.
+# Profile selection: copy desired block into active_llm section.
+llm_profiles:
+  cloud:                          # default MVP (gpt-4o-mini via OpenAI)
+    adapter: openai_compatible
+    base_url: https://api.openai.com/v1
+    model: gpt-4o-mini
+    # api_key: read from LLM_API_KEY env var
+
+  self_host:                      # M9: vLLM + Qwen2.5 (ПДн — transcripts never leave perimeter)
+    adapter: openai_compatible
+    base_url: http://vllm:8000/v1  # docker-compose service; override with VLLM_HOST for external
+    model: Qwen/Qwen2.5-7B-Instruct-AWQ  # 7B-AWQ ~10 GB VRAM; use 14B-AWQ with 20+ GB
+    vram_gb: 10                   # minimum VRAM for chosen model; guides hardware selection
+    gpu_memory_utilization: 0.90  # passed to vLLM via VLLM_GPU_MEM_UTIL env var
+    # api_key: not required for local vLLM; set HF_TOKEN env for gated model download
+
+  ru_cloud:                       # RU-jurisdiction fallback (YandexGPT / GigaChat)
+    adapter: openai_compatible    # both expose OpenAI-compatible endpoints
+    base_url: https://llm.api.cloud.yandex.net/foundationModels/v1/completion
+    model: yandexgpt-lite/latest
+    # api_key: read from LLM_API_KEY env var (IAM token or API key)
+
 active_crm: google_sheets  # json → google_sheets (M8)
 
 crm:

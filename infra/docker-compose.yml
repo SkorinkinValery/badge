@@ -49,8 +49,40 @@ services:
     profiles:
       - proxy
 
+  vllm:
+    image: vllm/vllm-openai:latest
+    command: >
+      --model ${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct-AWQ}
+      --dtype auto
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-4096}
+      --gpu-memory-utilization ${VLLM_GPU_MEM_UTIL:-0.90}
+    ports:
+      - "${VLLM_PORT:-8000}:8000"
+    volumes:
+      - vllm_model_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+              driver: nvidia
+              count: ${VLLM_GPU_COUNT:-1}
+    environment:
+      VLLM_MODEL: ${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct-AWQ}
+      HF_TOKEN: ${HF_TOKEN:-}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    profiles:
+      - self-host
+
 volumes:
   postgres_data:
   minio_data:
   caddy_data:
   caddy_config:
+  vllm_model_cache:

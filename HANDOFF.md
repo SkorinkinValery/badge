@@ -17,12 +17,33 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M5 — Auth (JWT) + UI (Next.js + Mantine)** | ✅ | `9ce778c` |
 | **M6 — Админка: менеджеры, скрипты, дневная сводка** | ✅ | `a10c5e0` |
 | **M7 — MicSource near-realtime** | ✅ | `e09924c` |
-| **M8 — Экспорт результатов (CRM)** | ✅ | текущий |
-| M9–M10 | Не начато | — |
+| **M8 — Экспорт результатов (CRM)** | ✅ | `b69b651` |
+| **M9 — Self-host LLM (vLLM + Qwen2.5) + RU-облако fallback** | ✅ | текущий |
+| M10 | Не начато | — |
 
-**Тесты на текущий момент: 462 backend + 49 frontend** — зелёные; ruff + mypy --strict — зелёные.
+**Тесты на текущий момент: 511 backend + 49 frontend** — зелёные; ruff + mypy --strict — зелёные.
 
-### Что сделано в M8 (последний milestone)
+### Что сделано в M9 (последний milestone)
+- **`infra/docker-compose.yml`** — сервис `vllm` (профиль `self-host`, GPU-резервация, OpenAI-совместимый порт 8000, том модели).
+- **`infra/config/providers.yaml`** — секция `llm_profiles` (cloud / self_host / ru_cloud) с параметрами base_url, model, vram_gb, gpu_memory_utilization.
+- **`config/settings.py`** — поле `LLMProviderConfig.structured_output_mode: str` ("json_object" | "guided_json").
+- **`adapters/analyzer/openai_compatible.py`** — поддержка `guided_json` через `extra_body` для vLLM; один адаптер для облака и self-host.
+- **`adapters/stt/yandex_stt.py`** — `YandexSttEngine(api_key, folder_id)` — Yandex SpeechKit REST, маппинг в `Transcript`.
+- **`adapters/stt/sber_stt.py`** — `SberSttEngine(auth_token)` — Sber SaluteSpeech REST.
+- **`adapters/analyzer/yandexgpt.py`** — `YandexGptAnalyzer(api_key, folder_id)` — Yandex Foundation Models API.
+- **`adapters/analyzer/gigachat.py`** — `GigaChatAnalyzer(auth_token, scope)` — Sber GigaChat OpenAI-compatible API.
+- **`adapters/analyzer/ru_llm_base.py`** — общий `parse_kpi_response()` для RU-облако адаптеров.
+- **`tests/infra/test_vllm_compose.py`** — 10 тестов compose-конфига vLLM.
+- **`tests/adapters/analyzer/test_vllm_guided_json.py`** — 5 тестов guided_json в OpenAICompatibleAnalyzer.
+- **`tests/contract/test_ru_stt_engines.py`** — 14 тестов контракта STTEngine (Yandex + Sber).
+- **`tests/contract/test_ru_llm_analyzers.py`** — 14 тестов контракта Analyzer (YandexGPT + GigaChat).
+- **`tests/integration/test_provider_swappability.py`** — 6 тестов инварианта сменности (stub/cloud/vLLM/RU-cloud).
+- **`docs/adr/ADR-001-llm-provider-strategy.md`** — ADR с ПДн-обоснованием и инструкцией переключения.
+
+### Новые зависимости в M9
+- Нет новых зависимостей (httpx уже был, vLLM — только в Docker-образе)
+
+### Что сделано в M8 (предпоследний milestone)
 - **`payload.py`** — `build_export_payload(analysis, recording, score=None, verdict=None) → dict`. `score`/`verdict` — опциональные параметры (не поля AnalysisResult).
 - **`google_sheets.py`** — `GoogleSheetsExporter(spreadsheet_id, worksheet_name, credentials_json)` — gspread, ADC-fallback.
 - **`webhook.py`** — `GenericWebhookExporter(url, headers, timeout)` — httpx POST + raise_for_status.
@@ -123,15 +144,14 @@ docs/
   PLAN.md  TZ-audiobadge-mvp.md  dev/tasks/M0–M10.md
 ```
 
-## 5. Следующий шаг — M9
+## 5. Следующий шаг — M10
 
-**Запустить агента:** `Реализуй milestone M9 по промпту docs/dev/implement-milestone.md`
+**Запустить агента:** `Реализуй milestone M10 по промпту docs/dev/implement-milestone.md`
 
-M9 — **Self-host LLM (vLLM + Qwen2.5)** — замена `gpt-4o-mini` на локальную модель под ПДн-требования.
-Детали: `docs/dev/tasks/M9-*.md`.
+M10 — **Data & Metrics** — аналитика, дашборды, retention-джобы, экспорт отчётов.
+Детали: `docs/dev/tasks/M10-data-metrics.md`.
 
-**Перед M9:**
-- GPU / объём VRAM под Qwen2.5 (см. открытые вопросы п.3).
+**Перед M10:**
 - Поднять окружение: `POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio`
 
 ## 6. Команды разработки

@@ -52,15 +52,22 @@ class OpenAICompatibleAnalyzer:
         )
 
         try:
-            response = self._client.chat.completions.create(
-                model=self._config.model,
-                messages=[
+            create_kwargs: dict[str, Any] = {
+                "model": self._config.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                response_format={"type": "json_object"},
-                temperature=0.0,
-            )
+                "temperature": 0.0,
+            }
+            if self._config.structured_output_mode == "guided_json":
+                create_kwargs["extra_body"] = {
+                    "guided_json": self._kpi_model.model_json_schema()
+                }
+            else:
+                create_kwargs["response_format"] = {"type": "json_object"}
+
+            response = self._client.chat.completions.create(**create_kwargs)
             raw_content = response.choices[0].message.content or "{}"
         except Exception as exc:
             log.error("analyzer.request.failed", error=str(exc))
