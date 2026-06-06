@@ -14,6 +14,24 @@ from app.config.settings import Settings, get_settings
 logger = structlog.get_logger(__name__)
 
 
+async def _seed_admin(session_factory: object, settings: Settings) -> None:
+    """Seed admin user from env if not present in DB."""
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.repositories.user_repo import UserRepository
+    from app.services.auth import async_seed_admin_if_missing
+
+    factory: async_sessionmaker[AsyncSession] = session_factory  # type: ignore[assignment]
+    async with factory() as session, session.begin():
+        repo = UserRepository(session)
+        await async_seed_admin_if_missing(
+            repo,
+            login=settings.admin_login,
+            password=settings.admin_password,
+            role="admin",
+        )
+
+
 def _make_get_settings_dep(settings: Settings):  # type: ignore[no-untyped-def]
     def _get_settings(request: Request) -> Settings:
         return request.app.state.settings  # type: ignore[no-any-return]
@@ -36,6 +54,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 structlog.dev.ConsoleRenderer(),
             ],
         )
+        try:
+            await _seed_admin(session_factory, _settings)
+            logger.info("admin_seeded_ok")
+        except Exception as exc:
+            logger.warning("admin_seed_failed", error=str(exc))
         logger.info("application_started", debug=_settings.debug)
         yield
 
@@ -71,6 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.api.recordings import router as recordings_router
     from app.api.scripts import router as scripts_router
     from app.api.uploads import router as uploads_router
+    from app.api.users import router as users_router
     from app.api.ws_mic import router as ws_mic_router
     app.include_router(auth_router)
     app.include_router(uploads_router)
@@ -78,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(managers_router)
     app.include_router(scripts_router)
     app.include_router(admin_router)
+    app.include_router(users_router)
     app.include_router(ws_mic_router)
 
     return app

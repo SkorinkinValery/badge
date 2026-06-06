@@ -1,6 +1,8 @@
-"""API tests for POST /api/auth/login — M5-T2."""
+"""API tests for POST /api/auth/login — M5-T2, updated B2 (DB-backed login)."""
 
 from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -25,25 +27,50 @@ def test_app():  # type: ignore[no-untyped-def]
     return create_app(settings=settings)
 
 
+def _mock_admin_user() -> object:
+    """Return a fake UserModel with admin credentials."""
+    from app.db.models.user import UserModel
+    from app.services.auth import hash_password
+
+    user = MagicMock(spec=UserModel)
+    user.login = "admin"
+    user.role = "admin"
+    user.is_active = True
+    user.password_hash = hash_password("adminpass123")
+    return user
+
+
 async def test_login_valid_credentials_returns_200(test_app) -> None:  # type: ignore[no-untyped-def]
-    async with AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as client:
-        resp = await client.post(
-            "/api/auth/login",
-            data={"username": "admin", "password": "adminpass123"},
-        )
+    admin_user = _mock_admin_user()
+    with patch("app.api.auth.UserRepository") as mock_repo_cls:
+        instance = AsyncMock()
+        instance.find_by_login = AsyncMock(return_value=admin_user)
+        mock_repo_cls.return_value = instance
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                "/api/auth/login",
+                data={"username": "admin", "password": "adminpass123"},
+            )
     assert resp.status_code == 200
 
 
 async def test_login_returns_access_token(test_app) -> None:  # type: ignore[no-untyped-def]
-    async with AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as client:
-        resp = await client.post(
-            "/api/auth/login",
-            data={"username": "admin", "password": "adminpass123"},
-        )
+    admin_user = _mock_admin_user()
+    with patch("app.api.auth.UserRepository") as mock_repo_cls:
+        instance = AsyncMock()
+        instance.find_by_login = AsyncMock(return_value=admin_user)
+        mock_repo_cls.return_value = instance
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                "/api/auth/login",
+                data={"username": "admin", "password": "adminpass123"},
+            )
     body = resp.json()
     assert "access_token" in body
     assert body["token_type"] == "bearer"
@@ -52,13 +79,19 @@ async def test_login_returns_access_token(test_app) -> None:  # type: ignore[no-
 async def test_login_token_contains_sub_and_role(test_app) -> None:  # type: ignore[no-untyped-def]
     from jose import jwt as jose_jwt
 
-    async with AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as client:
-        resp = await client.post(
-            "/api/auth/login",
-            data={"username": "admin", "password": "adminpass123"},
-        )
+    admin_user = _mock_admin_user()
+    with patch("app.api.auth.UserRepository") as mock_repo_cls:
+        instance = AsyncMock()
+        instance.find_by_login = AsyncMock(return_value=admin_user)
+        mock_repo_cls.return_value = instance
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                "/api/auth/login",
+                data={"username": "admin", "password": "adminpass123"},
+            )
     token = resp.json()["access_token"]
     payload = jose_jwt.decode(token, "testsecret", algorithms=["HS256"])
     assert payload["sub"] == "admin"
@@ -66,24 +99,35 @@ async def test_login_token_contains_sub_and_role(test_app) -> None:  # type: ign
 
 
 async def test_login_wrong_password_returns_401(test_app) -> None:  # type: ignore[no-untyped-def]
-    async with AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as client:
-        resp = await client.post(
-            "/api/auth/login",
-            data={"username": "admin", "password": "wrongpassword"},
-        )
+    admin_user = _mock_admin_user()
+    with patch("app.api.auth.UserRepository") as mock_repo_cls:
+        instance = AsyncMock()
+        instance.find_by_login = AsyncMock(return_value=admin_user)
+        mock_repo_cls.return_value = instance
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                "/api/auth/login",
+                data={"username": "admin", "password": "wrongpassword"},
+            )
     assert resp.status_code == 401
 
 
 async def test_login_unknown_user_returns_401(test_app) -> None:  # type: ignore[no-untyped-def]
-    async with AsyncClient(
-        transport=ASGITransport(app=test_app), base_url="http://test"
-    ) as client:
-        resp = await client.post(
-            "/api/auth/login",
-            data={"username": "nobody", "password": "anything"},
-        )
+    with patch("app.api.auth.UserRepository") as mock_repo_cls:
+        instance = AsyncMock()
+        instance.find_by_login = AsyncMock(return_value=None)
+        mock_repo_cls.return_value = instance
+
+        async with AsyncClient(
+            transport=ASGITransport(app=test_app), base_url="http://test"
+        ) as client:
+            resp = await client.post(
+                "/api/auth/login",
+                data={"username": "nobody", "password": "anything"},
+            )
     assert resp.status_code == 401
 
 
