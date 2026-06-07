@@ -8,7 +8,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Import Base to pick up all models automatically
+# Import Base, then the models package so every model registers on
+# Base.metadata — without this import, target_metadata is empty and
+# autogenerate proposes dropping all tables / emits empty migrations.
+import app.db.models  # noqa: F401
 from app.db.base import Base
 
 # Alembic Config object
