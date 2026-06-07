@@ -28,13 +28,26 @@ class TestKpiResultSchemaBuildsFromConfig:
         for field_name in model.model_fields:
             assert field_name in kpi_ids
 
-    def test_schema_field_count_matches_kpis(self) -> None:
+    def test_schema_field_count_matches_baseline_kpis(self) -> None:
         from app.adapters.analyzer.schema import build_kpi_result_model
         from app.config.kpi import load_kpi_config
 
         cfg = load_kpi_config()
-        model = build_kpi_result_model(cfg)
-        assert len(model.model_fields) == len(cfg.kpis)
+        # Baseline (no script) excludes script-only KPIs so the schema does not
+        # require fields the prompt never asked for.
+        baseline = build_kpi_result_model(cfg, include_script=False)
+        expected_baseline = [k for k in cfg.kpis if k.applies_to != "script"]
+        assert len(baseline.model_fields) == len(expected_baseline)
+        assert "script_compliance" not in baseline.model_fields
+
+    def test_schema_field_count_with_script_matches_all_kpis(self) -> None:
+        from app.adapters.analyzer.schema import build_kpi_result_model
+        from app.config.kpi import load_kpi_config
+
+        cfg = load_kpi_config()
+        full = build_kpi_result_model(cfg, include_script=True)
+        assert len(full.model_fields) == len(cfg.kpis)
+        assert "script_compliance" in full.model_fields
 
 
 class TestKpiResultValidation:

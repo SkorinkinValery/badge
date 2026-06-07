@@ -71,6 +71,18 @@ def test_app(sync_engine):  # type: ignore[no-untyped-def]
     return app
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _no_pipeline():  # type: ignore[no-untyped-def]
+    """Don't run the real pipeline on upload — these tests insert transcripts
+    manually and assert presence/absence. The endpoint upload triggers run_job
+    synchronously under ASGITransport, which would persist an extra (empty)
+    transcript row and break the manual fixtures."""
+    from unittest.mock import patch
+
+    with patch("app.workers.runner.run_job", lambda *args, **kwargs: None):
+        yield
+
+
 @pytest.fixture(scope="module")
 def manager_id(sync_engine) -> uuid.UUID:  # type: ignore[no-untyped-def]
     from sqlalchemy.orm import Session

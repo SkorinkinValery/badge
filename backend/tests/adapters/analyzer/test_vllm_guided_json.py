@@ -29,11 +29,13 @@ def _make_transcript() -> Transcript:
     )
 
 
-def _make_kpi_response() -> str:
+def _make_kpi_response(include_script: bool = True) -> str:
     """Build a minimal valid KPI JSON matching the schema from kpi.yaml."""
     kpi_cfg = load_kpi_config()
     payload: dict[str, Any] = {}
     for kpi in kpi_cfg.kpis:
+        if kpi.applies_to == "script" and not include_script:
+            continue
         payload[kpi.id] = {"value": 7.0, "quote": "тест", "comment": "ok"}
     return json.dumps(payload)
 
@@ -153,5 +155,37 @@ def test_result_validates_same_schema_regardless_of_mode() -> None:
 
         assert result.summary
         kpi_cfg = load_kpi_config()
+        # Baseline analysis (no script) must contain every baseline KPI and must
+        # NOT contain script-only KPIs — identical schema across both modes.
         for kpi in kpi_cfg.kpis:
-            assert kpi.id in result.kpi_json, f"KPI {kpi.id} missing in mode={mode}"
+            if kpi.applies_to == "script":
+                assert kpi.id not in result.kpi_json, (
+                    f"script KPI {kpi.id} must be absent in baseline mode={mode}"
+                )
+            else:
+                assert kpi.id in result.kpi_json, f"KPI {kpi.id} missing in mode={mode}"
+
+
+def test_baseline_analysis_succeeds_without_script_compliance() -> None:
+    """Regression: baseline LLM response omitting script_compliance must NOT
+    fail schema validation (previously every mic/baseline recording failed)."""
+    config = LLMProviderConfig(
+        adapter="openai_compatible",
+        base_url="http://localhost:8000/v1",
+        model="test-model",
+        api_key="test-key",
+        structured_output_mode="json_object",
+    )
+    analyzer = OpenAICompatibleAnalyzer(config)
+    transcript = _make_transcript()
+    baseline_response = _make_kpi_response(include_script=False)
+
+    with patch.object(
+        analyzer._client.chat.completions,
+        "create",
+        return_value=_mock_openai_response(baseline_response),
+    ):
+        result = analyzer.analyze(transcript)  # must not raise
+
+    assert "script_compliance" not in result.kpi_json
+    assert "greeting" in result.kpi_json

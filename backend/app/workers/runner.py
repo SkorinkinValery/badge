@@ -99,8 +99,56 @@ def run_job(
                 RecordingStatus(final_status),
                 stage_error=stage_error,
             )
+            _persist_results(session, recording_id, result)
             session.commit()
         engine.dispose()
 
     finally:
         conn.close()
+
+
+def _persist_results(
+    session: Session, recording_id: uuid.UUID, result: dict[str, object]
+) -> None:
+    """Upsert transcript + analysis computed by the pipeline.
+
+    The graph keeps everything in PipelineState; without this the rich
+    transcript/KPI output is lost and the API returns 404 for them.
+    Idempotent: re-running a recording overwrites prior rows.
+    """
+    from sqlalchemy import select
+
+    from app.db.models.analysis import AnalysisModel
+    from app.db.models.transcript import TranscriptModel
+
+    transcript = result.get("transcript")
+    if isinstance(transcript, dict):
+        row = session.execute(
+            select(TranscriptModel).where(TranscriptModel.recording_id == recording_id)
+        ).scalar_one_or_none()
+        if row is None:
+            row = TranscriptModel(recording_id=recording_id)
+            session.add(row)
+        row.full_text = transcript.get("full_text")
+        row.segments = transcript.get("segments")
+        row.detected_language = transcript.get("detected_language")
+
+    analysis = result.get("analysis_result")
+    if isinstance(analysis, dict):
+        row_a = session.execute(
+            select(AnalysisModel).where(AnalysisModel.recording_id == recording_id)
+        ).scalar_one_or_none()
+        score = result.get("score")
+        if row_a is None:
+            row_a = AnalysisModel(recording_id=recording_id)
+            session.add(row_a)
+        row_a.summary = analysis.get("summary")
+        row_a.kpi_json = analysis.get("kpi_json")
+        row_a.score = score  # type: ignore[assignment]
+        # Preserve auto_score from the original automatic run (manual PATCH may
+        # later override `score`); only set it if not already recorded.
+        if row_a.auto_score is None:
+            row_a.auto_score = score  # type: ignore[assignment]
+        row_a.verdict = result.get("verdict")  # type: ignore[assignment]
+        row_a.mode = analysis.get("mode") or "baseline"
+        row_a.weights_version = analysis.get("weights_version")

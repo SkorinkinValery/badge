@@ -61,6 +61,8 @@ class GigaChatAnalyzer:
         data = resp.json()
 
         raw_content = data["choices"][0]["message"]["content"]
-        result = parse_kpi_response(raw_content, self._kpi_cfg)
+        result = parse_kpi_response(
+            raw_content, self._kpi_cfg, include_script=script is not None
+        )
         log.info("gigachat.done", kpi_count=len(result.kpi_json))
         return result

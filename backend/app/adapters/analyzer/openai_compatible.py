@@ -12,7 +12,11 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from app.adapters.analyzer.prompt import build_prompt
-from app.adapters.analyzer.schema import KpiEntry, build_kpi_result_model
+from app.adapters.analyzer.schema import (
+    KpiEntry,
+    applicable_kpis,
+    build_kpi_result_model,
+)
 from app.config.kpi import load_kpi_config
 from app.config.settings import LLMProviderConfig
 from app.core.domain.transcript import Transcript
@@ -30,7 +34,6 @@ class OpenAICompatibleAnalyzer:
     def __init__(self, config: LLMProviderConfig) -> None:
         self._config = config
         self._kpi_cfg = load_kpi_config()
-        self._kpi_model = build_kpi_result_model(self._kpi_cfg)
         self._client = self._build_client()
 
     def _build_client(self) -> Any:
@@ -42,6 +45,8 @@ class OpenAICompatibleAnalyzer:
         )
 
     def analyze(self, transcript: Transcript, script: str | None = None) -> AnalysisResult:
+        include_script = script is not None
+        kpi_model = build_kpi_result_model(self._kpi_cfg, include_script=include_script)
         system_prompt, user_prompt = build_prompt(
             transcript, script=script, kpi_cfg=self._kpi_cfg
         )
@@ -62,7 +67,7 @@ class OpenAICompatibleAnalyzer:
             }
             if self._config.structured_output_mode == "guided_json":
                 create_kwargs["extra_body"] = {
-                    "guided_json": self._kpi_model.model_json_schema()
+                    "guided_json": kpi_model.model_json_schema()
                 }
             else:
                 create_kwargs["response_format"] = {"type": "json_object"}
@@ -75,13 +80,13 @@ class OpenAICompatibleAnalyzer:
 
         try:
             parsed = json.loads(raw_content)
-            kpi_result = self._kpi_model.model_validate(parsed)
+            kpi_result = kpi_model.model_validate(parsed)
         except Exception as exc:
             log.error("analyzer.parse.failed", error=str(exc), content=raw_content[:200])
             raise ValueError(f"LLM response failed schema validation: {exc}") from exc
 
         kpi_json: dict[str, Any] = {}
-        for kpi in self._kpi_cfg.kpis:
+        for kpi in applicable_kpis(self._kpi_cfg, include_script):
             entry: KpiEntry = getattr(kpi_result, kpi.id)
             kpi_json[kpi.id] = {
                 "value": entry.value,

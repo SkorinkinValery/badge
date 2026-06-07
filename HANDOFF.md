@@ -185,6 +185,19 @@ docs/
 
 **Тесты:** весь backend-сьют (639 тестов, без skip — 4) зелёный, включая ранее падавшие из-за отсутствия `jiwer` (он объявлен как extra `eval` в `pyproject.toml` — нужно `uv sync --extra eval`).
 
+**✅ Показ KPI в UI + персист результатов анализа (фикс после ревизии):**
+
+Симптом: в карточке разговора не было видно KPI. Найдено три причины:
+
+- **Schema-баг (критический): любой baseline-анализ падал.** `build_kpi_result_model` делал ВСЕ KPI обязательными, но промпт не запрашивает script-only KPI (`script_compliance`), когда скрипт не назначен → каждая запись падала с `script_compliance Field required`. Исправлено: `build_kpi_result_model(cfg, include_script)` + `applicable_kpis()` фильтруют script-only KPI; `openai_compatible.py` и `ru_llm_base.py` строят модель per-call и итерируют только включённые KPI.
+- **Результаты не сохранялись (корень 404): `run_job` сохранял только статус recording.** `TranscriptModel`/`AnalysisModel` не создавались нигде → `/transcript` и `/analysis` всегда 404 → KPI неоткуда взять. Добавлен `_persist_results()` в `runner.py` — идемпотентный upsert transcript + analysis (summary, kpi_json, score, auto_score, verdict, mode, weights_version) после `graph.invoke`.
+- **Фронт падал на пустых данных.** Карточка `recordings/[id]` делала `Object.entries(analysis.kpi_json)` даже на ответе `{"detail":"Analysis not found"}` → пустой экран. Переписана: `fetchOk()` глотает не-2xx, корректные empty-state («Анализ ещё не готов», «Транскрипт недоступен»), KPI-чек-лист с человекочитаемыми лейблами, fact-KPI как ✓/✗, scale как `N/10`, крупный балл + вердикт (+/~/-), `stage_error` для `failed`.
+- **Новый эндпоинт `GET /api/kpi`** (`api/kpi.py`) отдаёт рубрику (id, label, type, weight, applies_to, include_in_score) из `kpi.yaml`, чтобы фронт показывал лейблы, а не сырые id.
+
+Проверено end-to-end живым аплоадом: запись → `done` → `/analysis` отдаёт 9 baseline KPI (без `script_compliance`), `/transcript` отдаёт 200. Эталонные скрипты грузятся на `admin/scripts` (был и раньше).
+
+**Тесты после этого блока:** backend 644 passed / 4 skipped; frontend 55 passed; ruff (мои файлы) + mypy --strict зелёные. (Замечание по тест-изоляции: integration-тесты ходят в тот же dev-Postgres `localhost:5434` и чистят данные — не запускать полный сьют против боевой БД.)
+
 **Возможные дальнейшие шаги:**
 - Раскатка на staging/prod (Docker Compose → k8s или аналог).
 - Наполнение `datasets/` реальными размеченными звонками и запуск `scripts/eval_wer.py` + `scripts/eval_kpi.py`.

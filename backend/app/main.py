@@ -178,6 +178,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     from app.api.admin import router as admin_router
     from app.api.auth import router as auth_router
+    from app.api.kpi import router as kpi_router
     from app.api.managers import router as managers_router
     from app.api.recordings import router as recordings_router
     from app.api.scripts import router as scripts_router
@@ -191,6 +192,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(scripts_router)
     app.include_router(admin_router)
     app.include_router(users_router)
+    app.include_router(kpi_router)
     app.include_router(ws_mic_router)
 
     return app
