@@ -68,6 +68,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
           {isAdmin && (
             <>
+              <NavLink
+                component={Link}
+                href="/recordings/upload"
+                label="Загрузить запись"
+              />
+
               <Text size="xs" fw={600} c="dimmed" tt="uppercase" px={8} py={4} mt={8}>
                 Администрирование
               </Text>
