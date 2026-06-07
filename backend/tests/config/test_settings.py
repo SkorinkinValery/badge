@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 PROVIDERS_YAML = (
     Path(__file__).parent.parent.parent.parent / "infra" / "config" / "providers.yaml"
 )
@@ -72,10 +74,15 @@ def test_providers_config_default_language_is_ru() -> None:
     assert cfg.default_language == "ru"
 
 
-def test_providers_config_api_key_from_env() -> None:
-    """api_key must not be present in yaml itself — comes from env."""
+def test_providers_config_api_key_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """api_key must not be present in yaml itself — comes from env.
+
+    Clear the env key first (a real LLM_API_KEY may be exported via .env when
+    running through `make test`) so we genuinely assert the YAML has no key.
+    """
     from app.config.settings import load_providers_config
 
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
     cfg = load_providers_config(PROVIDERS_YAML)
     # api_key in yaml should be None/empty — real key only from env
     assert cfg.active_llm.api_key is None or cfg.active_llm.api_key == ""

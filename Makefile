@@ -4,7 +4,8 @@
 include .env
 export
 
-COMPOSE     := docker compose --env-file .env -f infra/docker-compose.yml
+COMPOSE      := docker compose --env-file .env -f infra/docker-compose.yml
+COMPOSE_TEST := docker compose -f infra/docker-compose.test.yml
 UVICORN     := uv run uvicorn app.main:app --app-dir backend
 ALEMBIC     := uv run alembic -c backend/alembic.ini
 BACKEND_PORT ?= 8000
@@ -12,7 +13,7 @@ BACKEND_PORT ?= 8000
 .DEFAULT_GOAL := help
 
 .PHONY: help install up down stop ps logs migrate revision dev backend frontend \
-        test test-fast lint typecheck clean
+        test test-fast test-up test-down lint typecheck clean
 
 help: ## Показать список команд
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) \
@@ -61,11 +62,20 @@ backend: ## Запустить FastAPI (uvicorn --reload) на :$(BACKEND_PORT)
 frontend: ## Запустить Next.js dev-сервер на :3000
 	cd frontend && npm run dev
 
-test: ## Все backend-тесты (нужны Postgres + MinIO)
+test-up: ## Поднять ИЗОЛИРОВАННУЮ тестовую инфру (Postgres :5435, MinIO :9100)
+	$(COMPOSE_TEST) up -d --wait
+	@echo "тестовая БД готова: postgres :5435/badge_test, minio :9100"
+
+test-down: ## Остановить и удалить тестовую инфру (данные эфемерны)
+	$(COMPOSE_TEST) down -v
+
+test: ## Все backend-тесты на ЧИСТОЙ изолированной тестовой БД (НЕ трогает dev)
+	-$(COMPOSE_TEST) down -v >/dev/null 2>&1
+	$(COMPOSE_TEST) up -d --wait
 	uv run pytest backend/tests/ -q
 
-test-fast: ## Быстрые тесты без внешних сервисов
-	uv run pytest backend/tests/ --ignore=backend/tests/db --ignore=backend/tests/workers -q
+test-fast: test-up ## Быстро: переиспользует поднятую тестовую БД, без heavy (GPU/модели)
+	uv run pytest backend/tests/ -m "not heavy" -q
 
 lint: ## ruff
 	uv run ruff check backend/

@@ -71,6 +71,19 @@ def test_app(sync_engine):  # type: ignore[no-untyped-def]
     return app
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _no_pipeline():  # type: ignore[no-untyped-def]
+    """Don't run the real pipeline on upload — these tests insert analyses
+    manually and assert their presence/absence. Upload triggers run_job
+    synchronously under ASGITransport; with a real LLM key it would persist an
+    analysis row, producing duplicates (MultipleResultsFound) and breaking the
+    'missing returns 404' cases."""
+    from unittest.mock import patch
+
+    with patch("app.workers.runner.run_job", lambda *args, **kwargs: None):
+        yield
+
+
 @pytest.fixture(scope="module")
 def manager_id(sync_engine) -> uuid.UUID:  # type: ignore[no-untyped-def]
     from sqlalchemy.orm import Session
