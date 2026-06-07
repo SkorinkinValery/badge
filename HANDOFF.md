@@ -21,7 +21,7 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M9 — Self-host LLM (vLLM + Qwen2.5) + RU-облако fallback** | ✅ | `7c4d90a` |
 | **M10 — Data & Metrics (eval_wer, eval_kpi, regression, calibrate, few_shot)** | ✅ | текущий |
 
-**Тесты на текущий момент: 577 backend + 49 frontend** — зелёные (без DB/workers/jiwer); ruff + mypy --strict — зелёные.
+**Тесты на текущий момент: 648 backend (изолированная БД `badge_test`, `make test`) + 55 frontend** — зелёные; ruff + mypy --strict — зелёные.
 
 ### Что сделано в M10 (последний milestone)
 - **`scripts/dataset.py`** — `DatasetEntry`/`GoldenTranscript`/`KpiLabel`/`EntryMeta` Pydantic-схемы; `load_dataset(dir)` — загрузка набора из `datasets/<id>/{meta,golden_transcript,kpi_labels}.json`; валидация KPI-ключей по `kpi.yaml`; пустой/отсутствующий каталог → `[]`.
@@ -140,7 +140,7 @@ backend/app/
   db/
     models/         # analysis, recording, transcript, manager, script, user
     repositories/   # manager_repo, recording_repo, script_repo
-    migrations/versions/  # baseline, core_schema, 4b47e88b70e8 (analysis), m6schema
+    migrations/versions/  # baseline, core_schema, 4b47e88b70e8 (analysis), m6schema, cc27a3cf97ac (user.is_active)
     session.py
   workers/      # runner.py (run_job)
   config/       # settings.py, kpi.py
@@ -196,7 +196,23 @@ docs/
 
 Проверено end-to-end живым аплоадом: запись → `done` → `/analysis` отдаёт 9 baseline KPI (без `script_compliance`), `/transcript` отдаёт 200. Эталонные скрипты грузятся на `admin/scripts` (был и раньше).
 
-**Тесты после этого блока:** backend 644 passed / 4 skipped; frontend 55 passed; ruff (мои файлы) + mypy --strict зелёные. (Замечание по тест-изоляции: integration-тесты ходят в тот же dev-Postgres `localhost:5434` и чистят данные — не запускать полный сьют против боевой БД.)
+**Тесты после этого блока:** backend 644 passed / 4 skipped; frontend 55 passed; ruff (мои файлы) + mypy --strict зелёные.
+
+**✅ Изоляция тестовой БД + единая схема CI + починка миграций (после KPI-фикса):**
+
+Симптом, давший толчок: интеграционные тесты ходили в тот же dev-Postgres `localhost:5434/badge`, что и `make dev`, стирали `user`/`recording` → падал логин админа (`admin`/`admin123` → "Invalid credentials").
+
+- **`infra/docker-compose.test.yml`** (новый) — отдельные эфемерные Postgres (`:5435/badge_test`) и MinIO (`:9100`), проект `badge-test`, `tmpfs`-тома. `backend/tests/conftest.py` (новый, корневой) переопределяет `DATABASE_URL`/`MINIO_*` на тестовые порты ДО импорта тестовых модулей — но только если URL пуст или указывает на dev (`:5434`); явный сторонний URL не трогается.
+- **`Makefile`** — `make test` теперь = чистая тестовая БД (`down -v && up --wait`) + pytest; `make test-up`/`test-down`/`test-fast` — управление инфрой отдельно.
+- **`.github/workflows/ci.yml`** — job `test` приведён к той же схеме `badge_test` (поднимает `docker-compose.test.yml` вместо инлайновых `services: postgres` на `:5432`), плюс шаг валидации миграций (см. ниже).
+- **Починены миграции `alembic upgrade head` с нуля** — `core_schema` (`b0d89f191dbd`) имела пустой `upgrade(): pass`, на чистой БД деплой падал (`relation "analysis" does not exist`). Дописан полный `op.create_table`/`op.drop_table` для всех 7 core-таблиц (БЕЗ колонок, добавляемых позже: `analysis.auto_score/corrected_by`, `script.active_version_id`, `recording.duration_seconds`, `user.is_active`). Проверено сравнением со схемой `Base.metadata.create_all` — побайтово идентичны.
+- **Починен `env.py`** — не импортировал `app.db.models` → `target_metadata` был пуст → `alembic revision --autogenerate` выдавал мусор (предлагал дропнуть все таблицы). Добавлен `import app.db.models`; теперь autogenerate на смигрированной БД даёт пустой diff — модели и миграции в синхроне, `make revision m="..."` снова можно использовать как обычно.
+
+**Тесты после этого блока:** backend 648 passed; CI-job `test` локально прогнан end-to-end (инфра → валидация миграций → pytest) — зелёный; dev-БД `:5434` больше не трогается тестами.
+
+**🔲 Следующая задача: в UI нет возможности загрузить запись файлом.**
+
+Бэкенд `POST /api/uploads` (`backend/app/api/uploads.py`, требует роль admin) существует и работает, но во фронтенде нет страницы/формы, которая бы его вызывала — есть только запись с микрофона (`recordings/record`, `POST /api/ws/mic`) и загрузка эталонных скриптов (`admin/scripts`). Нужно добавить UI-страницу/форму для загрузки готового аудиофайла записи разговора (выбор менеджера, согласие `consent_flag`, файл) с вызовом `POST /api/uploads`.
 
 **Возможные дальнейшие шаги:**
 - Раскатка на staging/prod (Docker Compose → k8s или аналог).
@@ -212,18 +228,16 @@ docs/
 POSTGRES_PORT=5434 docker compose -f infra/docker-compose.yml up -d postgres minio
 docker compose -f infra/docker-compose.yml down
 
-# Тесты без внешних сервисов (unit + contract):
-uv run pytest backend/tests/ --ignore=backend/tests/db --ignore=backend/tests/workers -q
-
-# Все тесты (с MinIO + Postgres на 5434):
-DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge \
-  uv run pytest backend/tests/ -q
+# Все тесты — на ИЗОЛИРОВАННОЙ тестовой БД (Postgres :5435/badge_test, MinIO :9100),
+# НЕ трогает dev-данные на :5434. Поднимает/гасит инфру сама:
+make test
+# или вручную: make test-up && uv run pytest backend/tests/ -q && make test-down
 
 # Линт/типы
 uv run ruff check backend/
 uv run mypy backend/app --strict
 
-# Миграции
+# Миграции (на dev-БД :5434)
 DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge \
   uv run alembic -c backend/alembic.ini upgrade head
 DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5434/badge \
