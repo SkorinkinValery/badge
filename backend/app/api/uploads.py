@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +42,7 @@ def _get_storage(settings: Annotated[Settings, Depends(get_settings)]) -> Object
 
 @router.post("", status_code=201, response_model=UploadResponse, dependencies=[AdminRequired])
 async def upload_recording(
+    request: Request,
     file: UploadFile,
     manager_id: Annotated[uuid.UUID, Form()],
     consent_flag: Annotated[bool, Form()],
@@ -86,6 +87,14 @@ async def upload_recording(
     await session.commit()
 
     from app.workers.runner import run_job  # lazy — heavy psycopg/langgraph import
-    background_tasks.add_task(run_job, recording_id, settings.database_url)
+    background_tasks.add_task(
+        run_job,
+        recording_id,
+        settings.database_url,
+        None,  # fail_at_stage
+        getattr(request.app.state, "crm_config", None),
+        getattr(request.app.state, "stt_engine", None),
+        getattr(request.app.state, "analyzer", None),
+    )
 
     return UploadResponse(recording_id=recording_id, status=RecordingStatus.QUEUED.value)

@@ -122,10 +122,16 @@ class TestUploadEndpoint:
 
     @pytest.mark.anyio
     async def test_recording_has_queued_status(
-        self, test_app, manager_id: uuid.UUID, db_session
+        self, test_app, manager_id: uuid.UUID, db_session, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from app.core.domain.enums import RecordingStatus
         from app.db.repositories.recording_repo import RecordingRepository
+
+        # The pipeline runs synchronously inside BackgroundTasks under ASGITransport,
+        # so without stubbing run_job the recording would already be in a terminal
+        # state (done/failed) by the time the response returns. Stub it out to assert
+        # the row the upload endpoint itself writes — status=queued at creation time.
+        monkeypatch.setattr("app.workers.runner.run_job", lambda *args, **kwargs: None)
 
         async with AsyncClient(
             transport=ASGITransport(app=test_app), base_url="http://test"

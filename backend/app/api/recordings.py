@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -186,6 +186,7 @@ class ProcessResponse(BaseModel):
 @router.post("/{recording_id}/process", status_code=202, response_model=ProcessResponse, dependencies=[AdminRequired])
 async def process_recording(
     recording_id: uuid.UUID,
+    request: Request,
     background_tasks: BackgroundTasks,
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -199,5 +200,13 @@ async def process_recording(
         raise HTTPException(status_code=404, detail="Recording not found")
 
     from app.workers.runner import run_job  # lazy — heavy psycopg/langgraph import
-    background_tasks.add_task(run_job, recording_id, settings.database_url)
+    background_tasks.add_task(
+        run_job,
+        recording_id,
+        settings.database_url,
+        None,  # fail_at_stage
+        getattr(request.app.state, "crm_config", None),
+        getattr(request.app.state, "stt_engine", None),
+        getattr(request.app.state, "analyzer", None),
+    )
     return ProcessResponse(recording_id=recording_id, status="accepted")

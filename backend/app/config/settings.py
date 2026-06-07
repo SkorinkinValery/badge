@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     mic_window_bytes: int = Field(default=32_000, alias="MIC_WINDOW_BYTES")
     mic_max_bytes: int = Field(default=10_485_760, alias="MIC_MAX_BYTES")
 
+    # CORS — space-separated list of allowed origins; defaults to local dev only
+    cors_origins: list[str] = Field(
+        default=["http://localhost:3000"],
+        alias="CORS_ORIGINS",
+    )
+
     # Retention
     retention_days: int = Field(default=90, alias="RETENTION_DAYS")
 

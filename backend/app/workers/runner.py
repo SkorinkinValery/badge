@@ -23,6 +23,8 @@ def run_job(
     db_url: str,
     fail_at_stage: str | None = None,
     crm_config: dict[str, object] | None = None,
+    stt_engine: object | None = None,
+    analyzer: object | None = None,
 ) -> None:
     """Run the processing graph for a single recording.
 
@@ -47,7 +49,12 @@ def run_job(
         saver = PostgresSaver(conn)
         saver.setup()
 
-        graph = build_graph(checkpointer=saver, fail_at_stage=fail_at_stage)
+        graph = build_graph(
+            checkpointer=saver,
+            fail_at_stage=fail_at_stage,
+            stt_engine=stt_engine,  # type: ignore[arg-type]
+            analyzer=analyzer,  # type: ignore[arg-type]
+        )
 
         thread_id = str(recording_id)
         config = {"configurable": {"thread_id": thread_id}}
@@ -60,7 +67,8 @@ def run_job(
                 from app.config.settings import load_providers_config
                 providers = load_providers_config()
                 _crm = {"active_crm": providers.active_crm, "params": providers.crm_params()}
-            except Exception:
+            except Exception as exc:
+                log.error("runner.providers_config_failed", error=str(exc))
                 _crm = {"active_crm": "json", "params": {}}
 
         initial_state = {
@@ -82,7 +90,7 @@ def run_job(
         final_status = result.get("status", RecordingStatus.FAILED.value)
         log.info("runner.done", recording_id=thread_id, status=final_status)
 
-        engine = create_engine(db_url)
+        engine = create_engine(sync_url)
         with Session(engine) as session:
             repo = RecordingRepository(session)
             stage_error = result.get("stage_error")

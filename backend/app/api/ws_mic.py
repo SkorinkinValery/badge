@@ -41,12 +41,13 @@ _DEFAULT_RETENTION_DAYS = 90
 
 
 def _get_stt(app: Any) -> Any:
-    """Return the configured STT engine (stub unless overridden on app.state)."""
+    """Return the configured STT engine from app.state."""
     engine = getattr(app.state, "stt_engine", None)
-    if engine is not None:
-        return engine
-    from app.adapters.stt.stub_stt import StubSTTEngine
-    return StubSTTEngine()
+    if engine is None:
+        log.error("ws_mic.stt_engine_missing", detail="app.state.stt_engine not set; check providers.yaml")
+        from app.adapters.stt.stub_stt import StubSTTEngine
+        return StubSTTEngine()
+    return engine
 
 
 async def _run_stt(stt: Any, payload: AudioPayload) -> str:
@@ -56,14 +57,28 @@ async def _run_stt(stt: Any, payload: AudioPayload) -> str:
     return str(transcript.full_text)
 
 
-def _kick_pipeline(recording_id: uuid.UUID, db_url: str) -> None:
+def _kick_pipeline(
+    recording_id: uuid.UUID,
+    db_url: str,
+    stt_engine: Any,
+    analyzer: Any,
+    crm_config: dict[str, Any] | None,
+) -> None:
     """Fire-and-forget: run the processing pipeline in a background thread."""
     import concurrent.futures
 
     from app.workers.runner import run_job  # lazy — heavy psycopg/langgraph import
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    executor.submit(run_job, recording_id, db_url)
+    executor.submit(
+        run_job,
+        recording_id,
+        db_url,
+        None,  # fail_at_stage
+        crm_config,
+        stt_engine,
+        analyzer,
+    )
     executor.shutdown(wait=False)
 
 
@@ -124,23 +139,20 @@ async def ws_mic(
     session_factory = websocket.app.state.session_factory
     stt = _get_stt(websocket.app)
 
-    # ── Authenticate (before heavy work) ────────────────────────────────────
+    # ── Authenticate BEFORE accept() to prevent unauthenticated connections ──
     user_sub: str | None = None
     if token:
         try:
             payload = decode_token(token, settings.jwt_secret)
             user_sub = payload.get("sub")
-        except Exception:
-            pass
-
-    await websocket.accept()
+        except Exception as exc:
+            log.warning("ws_mic.auth_failed", error=str(exc))
 
     if not user_sub:
-        await websocket.send_text(
-            ErrorMsg(code="AUTH_ERROR", message="Invalid or missing token").model_dump_json()
-        )
         await websocket.close(code=1008)
         return
+
+    await websocket.accept()
 
     # ── Session state ────────────────────────────────────────────────────────
     proto = SessionProtocol()
@@ -148,6 +160,12 @@ async def ws_mic(
         window_bytes=settings.mic_window_bytes,
         max_bytes=settings.mic_max_bytes,
     )
+    # Full audio accumulator — WebM container must stay intact for Whisper.
+    # Window-based partial STT is disabled: MediaRecorder produces streaming WebM
+    # where only the first chunk carries the EBML header; arbitrary byte-slicing
+    # breaks the container and causes Whisper decode failures.
+    audio_accum: bytearray = bytearray()
+    seen_seqs_audio: set[int] = set()
     recording_id: uuid.UUID | None = None
     active_start: StartMsg | None = None
 
@@ -194,8 +212,13 @@ async def ws_mic(
 
             # ── chunk ────────────────────────────────────────────────────────
             elif isinstance(msg, ChunkMsg):
+                chunk_data = msg.decode_data()
+                # Accumulate for final transcription (dedup by seq)
+                if msg.seq not in seen_seqs_audio:
+                    seen_seqs_audio.add(msg.seq)
+                    audio_accum.extend(chunk_data)
                 try:
-                    windows = buf.add(msg.seq, msg.decode_data())
+                    buf.add(msg.seq, chunk_data)  # overflow guard + protocol dedup
                 except BufferOverflowError as exc:
                     await websocket.send_text(
                         ErrorMsg(code="BUFFER_OVERFLOW", message=str(exc)).model_dump_json()
@@ -203,29 +226,13 @@ async def ws_mic(
                     await websocket.close(code=1011)
                     return
 
-                for window_data in windows:
-                    assert active_start is not None
-                    audio = AudioPayload(
-                        audio_data=window_data,
-                        sample_rate=16000,
-                        manager_id=active_start.manager_id,
-                        channel=active_start.channel,
-                        started_at=datetime.now(tz=UTC),
-                        consent_flag=active_start.consent_flag,
-                    )
-                    text = await _run_stt(stt, audio)
-                    await websocket.send_text(
-                        PartialTranscriptMsg(text=text).model_dump_json()
-                    )
-
                 await websocket.send_text(AckMsg(seq=msg.seq).model_dump_json())
 
             # ── stop ─────────────────────────────────────────────────────────
             elif isinstance(msg, StopMsg):
-                remainder = buf.flush()
-                if remainder and active_start is not None:
+                if audio_accum and active_start is not None:
                     audio = AudioPayload(
-                        audio_data=remainder,
+                        audio_data=bytes(audio_accum),
                         sample_rate=16000,
                         manager_id=active_start.manager_id,
                         channel=active_start.channel,
@@ -240,7 +247,13 @@ async def ws_mic(
                 if recording_id is not None:
                     await _set_status(session_factory, recording_id, RecordingStatus.QUEUED)
                     log.info("ws_mic.queued", recording_id=str(recording_id))
-                    _kick_pipeline(recording_id, settings.database_url)
+                    _kick_pipeline(
+                        recording_id,
+                        settings.database_url,
+                        stt_engine=stt,
+                        analyzer=getattr(websocket.app.state, "analyzer", None),
+                        crm_config=getattr(websocket.app.state, "crm_config", None),
+                    )
 
                 await websocket.close()
                 return

@@ -21,7 +21,7 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M9 — Self-host LLM (vLLM + Qwen2.5) + RU-облако fallback** | ✅ | `7c4d90a` |
 | **M10 — Data & Metrics (eval_wer, eval_kpi, regression, calibrate, few_shot)** | ✅ | текущий |
 
-**Тесты на текущий момент: 561 backend + 49 frontend** — зелёные; ruff + mypy --strict — зелёные.
+**Тесты на текущий момент: 577 backend + 49 frontend** — зелёные (без DB/workers/jiwer); ruff + mypy --strict — зелёные.
 
 ### Что сделано в M10 (последний milestone)
 - **`scripts/dataset.py`** — `DatasetEntry`/`GoldenTranscript`/`KpiLabel`/`EntryMeta` Pydantic-схемы; `load_dataset(dir)` — загрузка набора из `datasets/<id>/{meta,golden_transcript,kpi_labels}.json`; валидация KPI-ключей по `kpi.yaml`; пустой/отсутствующий каталог → `[]`.
@@ -161,6 +161,29 @@ docs/
 ## 5. Следующий шаг
 
 Все 10 milestone (M0–M10) завершены. MVP-ядро готово.
+
+**✅ Исправлена ошибка галлюцинированного транскрипта при записи с микрофона** (коммит после M10):
+
+**Причина:** `main.py` не инициализировал `app.state.stt_engine` → `_get_stt()` в `ws_mic.py` всегда возвращал `StubSTTEngine`. Стаб выдаёт фиксированную строку `"Добрый день, чем могу помочь? Хорошо, понял вас."` для каждого окна буфера (~10 окон за сессию = ~10 повторений).
+
+**Что исправлено:**
+- `main.py` — добавлен `_make_stt_engine(active_stt)` + `app.state.stt_engine` инициализируется из `providers.active_stt` при старте.
+- `adapters/stt/config.py` — добавлены anti-hallucination поля: `condition_on_previous_text=False`, `no_speech_threshold=0.6`, `compression_ratio_threshold=2.4`, `log_prob_threshold=-1.0`.
+- `adapters/stt/faster_whisper_engine.py` — новые поля передаются в `model.transcribe()`.
+- `tests/api/test_stt_engine_init.py` — 5 новых тестов; `tests/adapters/stt/test_stt_config.py` — +4 теста на новые поля конфига.
+
+**✅ Ревизия в 4 роли (Wiring/Production Readiness/Test Coverage/Security) + полное устранение находок:**
+
+- **C1** — `stt_engine`/`analyzer` теперь прокидываются через `build_graph()`/`run_job()` от `app.state` до графа на всех путях запуска (`uploads.py`, `recordings.py`, `ws_mic.py`) — раньше пайплайн всегда работал на стабах независимо от `providers.yaml`.
+- **C2** — `main.py:_make_analyzer()` инициализирует реальный `Analyzer` (`openai_compatible`/`yandexgpt`/`gigachat`/`stub`) из `providers.active_llm` и кладёт в `app.state.analyzer`.
+- **C3** — устранён риск с `audio/webm`: вместо нарезки по байтовому окну `ws_mic.py` накапливает весь сессионный поток в `audio_accum` и транскрибирует один раз на `stop` — WebM-контейнер остаётся целым.
+- **C5** — `websocket.accept()` перенесён ПОСЛЕ проверки JWT (был до — анонимные клиенты могли держать соединение открытым/DoS).
+- **C6/W1/W2** — убран silent fallback на стаб при неизвестном провайдере: `_make_stt_engine`/`_make_analyzer` бросают `ValueError`, ошибки конфига логируются (`log.error("providers_config_failed", ...)`).
+- **W3/W8/W9** — `assert` → явные проверки; rate limiting на `/api/auth/login` (5 попыток/60с, состояние в `app.state.login_attempts` — НЕ модульный global, чтобы не протекало между тестами); `CORSMiddleware` с `cors_origins` из настроек.
+- **W4** — автоудаление по retention теперь реально работает: `_retention_loop()` в lifespan вызывает `purge_expired_recordings` раз в час.
+- **Баг в `runner.py` (найден при прогоне тестов, не из ревизии)** — финальное обновление статуса делало `create_engine(db_url)` с `+asyncpg` URL в синхронном контексте → `MissingGreenlet` при каждом завершении джобы (запись навсегда оставалась в `queued`, реальный финальный статус никогда не персистился). Исправлено на `create_engine(sync_url)`.
+
+**Тесты:** весь backend-сьют (639 тестов, без skip — 4) зелёный, включая ранее падавшие из-за отсутствия `jiwer` (он объявлен как extra `eval` в `pyproject.toml` — нужно `uv sync --extra eval`).
 
 **Возможные дальнейшие шаги:**
 - Раскатка на staging/prod (Docker Compose → k8s или аналог).

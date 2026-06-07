@@ -70,6 +70,10 @@ class FasterWhisperEngine:
                 language=self._config.default_language,
                 vad_filter=self._config.vad_filter,
                 initial_prompt=self._build_initial_prompt(),
+                condition_on_previous_text=self._config.condition_on_previous_text,
+                no_speech_threshold=self._config.no_speech_threshold,
+                compression_ratio_threshold=self._config.compression_ratio_threshold,
+                log_prob_threshold=self._config.log_prob_threshold,
             )
             raw_segments = list(segments_iter)
         except Exception as exc:

@@ -11,6 +11,8 @@ from langgraph.graph import END, StateGraph
 from app.core.domain.enums import RecordingStatus
 from app.core.pipeline.nodes import NodeFn, make_nodes
 from app.core.pipeline.state import PipelineState
+from app.core.ports.analyzer import Analyzer
+from app.core.ports.stt_engine import STTEngine
 
 _MAX_RETRY = 3
 
@@ -23,6 +25,8 @@ def build_graph(
     checkpointer: BaseCheckpointSaver[Any],
     fail_at_stage: str | None = None,
     on_status_change: Callable[[str], None] | None = None,
+    stt_engine: STTEngine | None = None,
+    analyzer: Analyzer | None = None,
 ) -> Any:
     """Build and compile the processing graph.
 
@@ -30,8 +34,14 @@ def build_graph(
         checkpointer: LangGraph checkpointer (MemorySaver or PostgresSaver).
         fail_at_stage: Inject a failure at a specific stage (for testing).
         on_status_change: Optional callback fired with each new status string.
+        stt_engine: Real STT engine; falls back to StubSTTEngine if None.
+        analyzer: Real LLM analyzer; falls back to StubAnalyzer if None.
     """
-    raw_nodes = make_nodes(fail_at_stage=fail_at_stage)
+    raw_nodes = make_nodes(
+        fail_at_stage=fail_at_stage,
+        stt_engine=stt_engine,
+        analyzer=analyzer,
+    )
     nodes: dict[str, NodeFn]
 
     if on_status_change is not None:

@@ -28,3 +28,8 @@ class WhisperConfig(SttProviderConfig):
     vad_filter: bool = True
     initial_prompt: str | None = None
     vocabulary: list[str] = []
+    # Anti-hallucination guards — critical for silent/noisy windows
+    condition_on_previous_text: bool = False
+    no_speech_threshold: float = 0.6
+    compression_ratio_threshold: float = 2.4
+    log_prob_threshold: float = -1.0

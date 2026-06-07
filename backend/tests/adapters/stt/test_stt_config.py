@@ -37,6 +37,26 @@ class TestWhisperConfigDefaults:
         cfg = WhisperConfig()
         assert cfg.compute_type == "int8"
 
+    def test_default_condition_on_previous_text_is_false(self) -> None:
+        from app.adapters.stt.config import WhisperConfig
+        cfg = WhisperConfig()
+        assert cfg.condition_on_previous_text is False
+
+    def test_default_no_speech_threshold(self) -> None:
+        from app.adapters.stt.config import WhisperConfig
+        cfg = WhisperConfig()
+        assert cfg.no_speech_threshold == pytest.approx(0.6)
+
+    def test_default_compression_ratio_threshold(self) -> None:
+        from app.adapters.stt.config import WhisperConfig
+        cfg = WhisperConfig()
+        assert cfg.compression_ratio_threshold == pytest.approx(2.4)
+
+    def test_default_log_prob_threshold(self) -> None:
+        from app.adapters.stt.config import WhisperConfig
+        cfg = WhisperConfig()
+        assert cfg.log_prob_threshold == pytest.approx(-1.0)
+
 
 class TestWhisperConfigParsing:
     def test_model_size_large_v3(self) -> None:

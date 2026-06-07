@@ -49,22 +49,29 @@ def _make_test_app() -> object:
 # ── Auth tests (no real DB needed) ──────────────────────────────────────────
 
 class TestWsMicAuth:
+    """Auth is checked BEFORE accept() (C5 fix — no unauthenticated connections),
+    so unauthenticated clients never complete the handshake: the server closes
+    with code 1008 and the client sees a WebSocketDisconnect, not an error frame."""
+
     def test_missing_token_gets_auth_error(self) -> None:
+        from starlette.websockets import WebSocketDisconnect
+
         app = _make_test_app()
-        with TestClient(app) as client, client.websocket_connect("/api/ws/mic") as ws:
-            msg = ws.receive_json()
-            assert msg["type"] == "error"
-            assert msg["code"] == "AUTH_ERROR"
+        with TestClient(app) as client:
+            with pytest.raises(WebSocketDisconnect) as exc_info:
+                with client.websocket_connect("/api/ws/mic"):
+                    pass
+            assert exc_info.value.code == 1008
 
     def test_invalid_token_gets_auth_error(self) -> None:
+        from starlette.websockets import WebSocketDisconnect
+
         app = _make_test_app()
-        with (
-            TestClient(app) as client,
-            client.websocket_connect("/api/ws/mic?token=bad.token.here") as ws,
-        ):
-            msg = ws.receive_json()
-            assert msg["type"] == "error"
-            assert msg["code"] == "AUTH_ERROR"
+        with TestClient(app) as client:
+            with pytest.raises(WebSocketDisconnect) as exc_info:
+                with client.websocket_connect("/api/ws/mic?token=bad.token.here"):
+                    pass
+            assert exc_info.value.code == 1008
 
 
 # ── Protocol tests (no real DB needed for these cases) ──────────────────────
