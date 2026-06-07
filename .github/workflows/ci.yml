@@ -74,6 +74,15 @@ jobs:
       - name: Start isolated test infra (Postgres :5435/badge_test, MinIO :9100)
         run: docker compose -f infra/docker-compose.test.yml up -d --wait
 
+      # Проверяем, что миграции применяются С НУЛЯ на отдельной чистой БД
+      # (не badge_test, чтобы не пересекаться с create_all из тестов).
+      - name: Validate Alembic migrations apply from scratch
+        run: |
+          docker compose -f infra/docker-compose.test.yml exec -T postgres-test \
+            psql -U badge -d badge_test -c "CREATE DATABASE badge_migrate;"
+          DATABASE_URL=postgresql+asyncpg://badge:badge@localhost:5435/badge_migrate \
+            uv run alembic -c backend/alembic.ini upgrade head
+
       - name: Run pytest
         run: uv run pytest backend/tests/ -v
 
