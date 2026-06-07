@@ -208,5 +208,6 @@ async def process_recording(
         getattr(request.app.state, "crm_config", None),
         getattr(request.app.state, "stt_engine", None),
         getattr(request.app.state, "analyzer", None),
+        getattr(request.app.state, "storage", None),
     )
     return ProcessResponse(recording_id=recording_id, status="accepted")

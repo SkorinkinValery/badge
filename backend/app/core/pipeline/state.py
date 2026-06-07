@@ -12,6 +12,10 @@ class PipelineState(TypedDict, total=False):
     status: str
     stage_error: str | None
     retry: int
+    audio_path: str | None
+    manager_id: str | None
+    consent_flag: bool
+    channel: str
     audio_payload: dict[str, Any] | None
     transcript: dict[str, Any] | None
     analysis_result: dict[str, Any] | None

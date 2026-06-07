@@ -227,7 +227,20 @@ class TestWsMicIntegration:
     def test_stop_finalizes_recording(
         self, ws_test_app: object, _db_manager: uuid.UUID
     ) -> None:
+        """Accumulated mic audio must be persisted to object storage and
+        recording.audio_path set — otherwise the pipeline has nothing real
+        to normalize/transcribe and silently processes a silent stub."""
+        import asyncio
+
+        from sqlalchemy import select
+        from sqlalchemy.pool import NullPool
+
+        from app.db.models.recording import RecordingModel
+        from app.db.session import make_session_factory
+
         token = _make_token()
+        chunk_data = base64.b64encode(b"\x00" * 200).decode()
+        recording_id: uuid.UUID | None = None
         with (
             TestClient(ws_test_app) as client,  # type: ignore[arg-type]
             client.websocket_connect(f"/api/ws/mic?token={token}") as ws,
@@ -239,7 +252,11 @@ class TestWsMicIntegration:
                     "consent_flag": True,
                 }
             )
-            ws.receive_json()  # ack
+            ack = ws.receive_json()  # ack
+            recording_id = uuid.UUID(ack["message"].split()[1])
+
+            ws.send_json({"type": "chunk", "seq": 0, "data": chunk_data})
+            ws.receive_json()  # ack for chunk
 
             ws.send_json({"type": "stop"})
             try:
@@ -247,6 +264,19 @@ class TestWsMicIntegration:
                     ws.receive_json()
             except Exception:
                 pass  # closed
+
+        async def _fetch_audio_path() -> str | None:
+            factory = make_session_factory(_DB_URL, pool_pre_ping=False, poolclass=NullPool)
+            async with factory() as session:
+                result = await session.execute(
+                    select(RecordingModel).where(RecordingModel.id == recording_id)
+                )
+                rec = result.scalar_one_or_none()
+                return rec.audio_path if rec is not None else None
+
+        audio_path = asyncio.run(_fetch_audio_path())
+        assert audio_path is not None
+        assert audio_path.endswith(".webm")
 
     def test_consent_flag_false_rejected(
         self, ws_test_app: object, _db_manager: uuid.UUID

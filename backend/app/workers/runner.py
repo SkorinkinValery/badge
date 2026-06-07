@@ -25,6 +25,7 @@ def run_job(
     crm_config: dict[str, object] | None = None,
     stt_engine: object | None = None,
     analyzer: object | None = None,
+    storage: object | None = None,
 ) -> None:
     """Run the processing graph for a single recording.
 
@@ -45,6 +46,7 @@ def run_job(
     )
 
     conn = psycopg.connect(sync_url, autocommit=True, row_factory=dict_row)
+    engine = create_engine(sync_url)
     try:
         saver = PostgresSaver(conn)
         saver.setup()
@@ -54,6 +56,7 @@ def run_job(
             fail_at_stage=fail_at_stage,
             stt_engine=stt_engine,  # type: ignore[arg-type]
             analyzer=analyzer,  # type: ignore[arg-type]
+            storage=storage,  # type: ignore[arg-type]
         )
 
         thread_id = str(recording_id)
@@ -71,11 +74,24 @@ def run_job(
                 log.error("runner.providers_config_failed", error=str(exc))
                 _crm = {"active_crm": "json", "params": {}}
 
+        with Session(engine) as session:
+            recording = RecordingRepository(session).get(recording_id)
+            if recording is None:
+                raise ValueError(f"recording not found: {recording_id}")
+            audio_path = recording.audio_path
+            manager_id = str(recording.manager_id)
+            consent_flag = recording.consent_flag
+            channel = recording.channel
+
         initial_state = {
             "recording_id": thread_id,
             "status": RecordingStatus.QUEUED.value,
             "stage_error": None,
             "retry": 0,
+            "audio_path": audio_path,
+            "manager_id": manager_id,
+            "consent_flag": consent_flag,
+            "channel": channel,
             "audio_payload": None,
             "transcript": None,
             "analysis_result": None,
@@ -90,7 +106,6 @@ def run_job(
         final_status = result.get("status", RecordingStatus.FAILED.value)
         log.info("runner.done", recording_id=thread_id, status=final_status)
 
-        engine = create_engine(sync_url)
         with Session(engine) as session:
             repo = RecordingRepository(session)
             stage_error = result.get("stage_error")
@@ -101,10 +116,10 @@ def run_job(
             )
             _persist_results(session, recording_id, result)
             session.commit()
-        engine.dispose()
 
     finally:
         conn.close()
+        engine.dispose()
 
 
 def _persist_results(

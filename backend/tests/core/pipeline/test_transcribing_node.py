@@ -15,9 +15,11 @@ def _make_state(recording_id: uuid.UUID | None = None) -> dict[str, Any]:
         "stage_error": None,
         "retry": 0,
         "audio_payload": {
-            "audio_data": b"\x00" * 100,
-            "sample_rate": 16000,
+            "normalized_key": None,
+            "manager_id": "00000000-0000-0000-0000-000000000001",
+            "consent_flag": True,
             "channel": "file",
+            "sample_rate": 16000,
         },
         "transcript": None,
         "analysis_result": None,
@@ -109,6 +111,68 @@ class TestTranscribingNodeFailurePath:
 
         assert result["status"] == RecordingStatus.FAILED.value
         assert result["stage_error"] is not None
+
+
+class TestTranscribingNodeRealAudio:
+    def test_fetches_real_bytes_via_file_source_when_normalized_key_present(self) -> None:
+        """When audio_payload carries a normalized_key and storage is injected,
+        the node must fetch real bytes via FileSource — not the silent stub —
+        otherwise STT always transcribes silence regardless of the uploaded audio."""
+        from io import BytesIO
+
+        from app.core.domain.transcript import Segment, Transcript
+        from app.core.pipeline.nodes import make_nodes
+
+        captured: dict[str, Any] = {}
+
+        class FakeEngine:
+            def transcribe(self, audio: Any) -> Transcript:
+                captured["audio"] = audio
+                return Transcript(
+                    id=uuid.uuid4(),
+                    recording_id=uuid.uuid4(),
+                    full_text="реальный текст",
+                    segments=(Segment(start=0.0, end=1.0, text="реальный текст"),),
+                    detected_language="ru",
+                )
+
+        class FakeStorage:
+            def get_object(self, key: str) -> BytesIO:
+                captured["key"] = key
+                return BytesIO(b"REAL-AUDIO-BYTES")
+
+        nodes = make_nodes(stt_engine=FakeEngine(), storage=FakeStorage())  # type: ignore[arg-type]
+        state = _make_state()
+        state["audio_payload"] = {
+            "normalized_key": "recordings/abc/normalized.wav",
+            "manager_id": "11111111-1111-1111-1111-111111111111",
+            "consent_flag": True,
+            "channel": "file",
+            "sample_rate": 16000,
+        }
+        result = nodes["transcribing"](state)
+
+        assert captured["key"] == "recordings/abc/normalized.wav"
+        assert captured["audio"].audio_data == b"REAL-AUDIO-BYTES"
+        assert str(captured["audio"].manager_id) == "11111111-1111-1111-1111-111111111111"
+        assert result["transcript"]["full_text"] == "реальный текст"
+        assert result["status"] == RecordingStatus.TRANSCRIBING.value
+
+    def test_falls_back_to_stub_when_no_normalized_key(self) -> None:
+        """No normalized_key (e.g. legacy recordings, unit tests without MinIO)
+        → stub audio source, exactly like the no-storage path."""
+        from app.core.pipeline.nodes import make_nodes
+
+        class FakeStorage:
+            def get_object(self, key: str) -> Any:
+                raise AssertionError("storage.get_object must not be called without normalized_key")
+
+        nodes = make_nodes(storage=FakeStorage())  # type: ignore[arg-type]
+        state = _make_state()
+        result = nodes["transcribing"](state)
+
+        assert result["status"] == RecordingStatus.TRANSCRIBING.value
+        assert result["transcript"] is not None
 
 
 class TestTranscribingNodeDefaultEngine:

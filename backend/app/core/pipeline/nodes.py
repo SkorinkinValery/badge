@@ -5,6 +5,7 @@ Nodes call ports (not adapters directly); stubs are used in testing.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -14,6 +15,7 @@ from app.core.domain.enums import RecordingStatus
 from app.core.pipeline.state import PipelineState
 from app.core.ports.analyzer import Analyzer
 from app.core.ports.stt_engine import STTEngine
+from app.services.storage import ObjectStorage
 
 log = structlog.get_logger()
 
@@ -40,32 +42,60 @@ def make_nodes(
     fail_at_stage: str | None = None,
     stt_engine: STTEngine | None = None,
     analyzer: Analyzer | None = None,
+    storage: ObjectStorage | None = None,
 ) -> dict[str, NodeFn]:
     """Return a dict of stage node callables, optionally injecting a failure."""
 
     def normalizing(state: PipelineState) -> PipelineState:
         if fail_at_stage == "normalizing":
             return _fail_state(state, "normalizing")
-        from app.adapters.audio.file_stub import FileStubSource
 
         log.info("stage.started", stage="normalizing")
-        source = FileStubSource()
-        payload = source.fetch()
+
+        manager_id = state.get("manager_id")
+        consent_flag = bool(state.get("consent_flag", True))
+        channel = str(state.get("channel") or "file")
+        audio_path = state.get("audio_path")
+
+        audio_payload: dict[str, Any]
+        if storage is not None and audio_path:
+            from app.services.normalize import NormalizationError, normalize_audio
+            from app.services.storage import StorageKeyNotFoundError
+
+            try:
+                normalized_key = normalize_audio(
+                    uuid.UUID(state["recording_id"]), audio_path, storage
+                )
+            except (NormalizationError, StorageKeyNotFoundError) as exc:
+                log.error("stage.normalize.error", error=str(exc))
+                return _fail_state(state, "normalizing", error=f"Normalization error: {exc}")
+
+            audio_payload = {
+                "normalized_key": normalized_key,
+                "manager_id": manager_id,
+                "consent_flag": consent_flag,
+                "channel": channel,
+                "sample_rate": 16000,
+            }
+        else:
+            audio_payload = {
+                "normalized_key": None,
+                "manager_id": manager_id,
+                "consent_flag": consent_flag,
+                "channel": channel,
+                "sample_rate": 16000,
+            }
+
         log.info("stage.done", stage="normalizing")
         return _patch(
             state,
             status=RecordingStatus.NORMALIZING.value,
-            audio_payload={
-                "audio_data": "<bytes>",
-                "sample_rate": payload.sample_rate,
-                "channel": payload.channel,
-            },
+            audio_payload=audio_payload,
         )
 
     def transcribing(state: PipelineState) -> PipelineState:
         if fail_at_stage == "transcribing":
             return _fail_state(state, "transcribing")
-        import uuid
         from datetime import UTC, datetime
 
         from app.core.ports import AudioPayload
@@ -80,15 +110,38 @@ def make_nodes(
             engine = StubSTTEngine()
 
         audio_payload: dict[str, Any] = state.get("audio_payload") or {}
-        raw_audio = audio_payload.get("audio_data") or b"\x00" * 100
-        audio = AudioPayload(
-            audio_data=raw_audio if isinstance(raw_audio, bytes) else b"\x00" * 100,
-            sample_rate=int(audio_payload.get("sample_rate") or 16000),
-            manager_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-            channel=str(audio_payload.get("channel") or "file"),
-            started_at=datetime.now(tz=UTC),
-            consent_flag=True,
+        manager_id_raw = audio_payload.get("manager_id")
+        manager_id = (
+            uuid.UUID(manager_id_raw)
+            if manager_id_raw
+            else uuid.UUID("00000000-0000-0000-0000-000000000001")
         )
+        consent_flag = bool(audio_payload.get("consent_flag", True))
+        channel = str(audio_payload.get("channel") or "file")
+        normalized_key = audio_payload.get("normalized_key")
+
+        if normalized_key and storage is not None:
+            from app.adapters.audio.file_source import FileSource
+
+            audio = FileSource(
+                storage,
+                str(normalized_key),
+                manager_id,
+                consent_flag,
+                channel,
+            ).fetch()
+        else:
+            from app.adapters.audio.file_stub import FileStubSource
+
+            audio = FileStubSource().fetch()
+            audio = AudioPayload(
+                audio_data=audio.audio_data,
+                sample_rate=audio.sample_rate,
+                manager_id=manager_id,
+                channel=channel,
+                started_at=datetime.now(tz=UTC),
+                consent_flag=consent_flag,
+            )
 
         try:
             transcript = engine.transcribe(audio)
@@ -118,8 +171,6 @@ def make_nodes(
     def analyzing(state: PipelineState) -> PipelineState:
         if fail_at_stage == "analyzing":
             return _fail_state(state, "analyzing")
-        import uuid
-
         from app.core.domain.transcript import Segment, Transcript
 
         log.info("stage.started", stage="analyzing")
@@ -192,7 +243,6 @@ def make_nodes(
     def exporting(state: PipelineState) -> PipelineState:
         if fail_at_stage == "exporting":
             return _fail_state(state, "exporting")
-        import uuid
         from datetime import UTC, datetime
 
         from app.adapters.crm.registry import get_exporter

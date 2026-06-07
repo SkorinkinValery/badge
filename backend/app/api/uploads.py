@@ -95,6 +95,7 @@ async def upload_recording(
         getattr(request.app.state, "crm_config", None),
         getattr(request.app.state, "stt_engine", None),
         getattr(request.app.state, "analyzer", None),
+        getattr(request.app.state, "storage", None),
     )
 
     return UploadResponse(recording_id=recording_id, status=RecordingStatus.QUEUED.value)

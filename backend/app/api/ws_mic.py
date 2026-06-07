@@ -8,6 +8,7 @@ Auth: JWT passed as query param `?token=...` (browsers cannot send
 from __future__ import annotations
 
 import asyncio
+import io
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -63,6 +64,7 @@ def _kick_pipeline(
     stt_engine: Any,
     analyzer: Any,
     crm_config: dict[str, Any] | None,
+    storage: Any = None,
 ) -> None:
     """Fire-and-forget: run the processing pipeline in a background thread."""
     import concurrent.futures
@@ -78,6 +80,7 @@ def _kick_pipeline(
         crm_config,
         stt_engine,
         analyzer,
+        storage,
     )
     executor.shutdown(wait=False)
 
@@ -105,6 +108,38 @@ async def _create_recording(
         session.add(rec)
         await session.commit()
     return recording_id
+
+
+async def _persist_mic_audio(
+    session_factory: Any,
+    storage: Any,
+    recording_id: uuid.UUID,
+    data: bytes,
+) -> str | None:
+    """Upload accumulated mic audio (WebM container) to object storage and
+    record its key on the recording row, so the pipeline can normalize and
+    transcribe the real captured audio (not a stub).
+
+    Returns the storage key, or None if storage is unavailable.
+    """
+    if storage is None:
+        log.error("ws_mic.storage_missing", recording_id=str(recording_id))
+        return None
+
+    from app.services.storage import ObjectStorage
+
+    audio_key = ObjectStorage.make_key(recording_id, "original", ".webm")
+    storage.put_object(audio_key, io.BytesIO(data), len(data), "audio/webm")
+
+    async with session_factory() as session:
+        result = await session.execute(
+            select(RecordingModel).where(RecordingModel.id == recording_id)
+        )
+        rec = result.scalar_one_or_none()
+        if rec is not None:
+            rec.audio_path = audio_key
+            await session.commit()
+    return audio_key
 
 
 async def _set_status(
@@ -245,6 +280,11 @@ async def ws_mic(
                     )
 
                 if recording_id is not None:
+                    storage = getattr(websocket.app.state, "storage", None)
+                    if audio_accum:
+                        await _persist_mic_audio(
+                            session_factory, storage, recording_id, bytes(audio_accum)
+                        )
                     await _set_status(session_factory, recording_id, RecordingStatus.QUEUED)
                     log.info("ws_mic.queued", recording_id=str(recording_id))
                     _kick_pipeline(
@@ -253,6 +293,7 @@ async def ws_mic(
                         stt_engine=stt,
                         analyzer=getattr(websocket.app.state, "analyzer", None),
                         crm_config=getattr(websocket.app.state, "crm_config", None),
+                        storage=storage,
                     )
 
                 await websocket.close()

@@ -144,6 +144,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = _settings
     app.state.session_factory = session_factory
 
+    try:
+        from app.services.storage import ObjectStorage
+        storage = ObjectStorage(
+            endpoint=_settings.minio_endpoint,
+            access_key=_settings.minio_root_user,
+            secret_key=_settings.minio_root_password,
+            bucket=_settings.minio_bucket,
+        )
+        storage.ensure_bucket()
+        app.state.storage = storage
+    except Exception as exc:
+        logger.error("storage_init_failed", error=str(exc), exc_info=True)
+        app.state.storage = None
+
     # CORS — restrict to configured origins; never wildcard in production
     _cors_origins = getattr(_settings, "cors_origins", ["http://localhost:3000"])
     app.add_middleware(
