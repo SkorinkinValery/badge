@@ -236,3 +236,6 @@ class TestRunnerRealAudio:
         stub_bytes = FileStubSource().fetch().audio_data
         assert captured_bytes != stub_bytes
         assert len(captured_bytes) > len(stub_bytes)
+
+        # duration_seconds is populated from the last transcript segment end
+        assert rec.duration_seconds == 1.0

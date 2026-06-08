@@ -122,6 +122,24 @@ def run_job(
         engine.dispose()
 
 
+def _duration_from_segments(segments: object) -> float | None:
+    """Call duration ≈ end time of the last transcript segment.
+
+    faster-whisper (and the RU STT engines) emit per-segment timings; the max
+    `end` is a cheap, dependency-free proxy for the call length used by the
+    daily summary. Returns None when there are no usable segment timings.
+    """
+    if isinstance(segments, list) and segments:
+        ends = [
+            s["end"]
+            for s in segments
+            if isinstance(s, dict) and isinstance(s.get("end"), (int, float))
+        ]
+        if ends:
+            return float(max(ends))
+    return None
+
+
 def _persist_results(
     session: Session, recording_id: uuid.UUID, result: dict[str, object]
 ) -> None:
@@ -134,6 +152,7 @@ def _persist_results(
     from sqlalchemy import select
 
     from app.db.models.analysis import AnalysisModel
+    from app.db.models.recording import RecordingModel
     from app.db.models.transcript import TranscriptModel
 
     transcript = result.get("transcript")
@@ -147,6 +166,15 @@ def _persist_results(
         row.full_text = transcript.get("full_text")
         row.segments = transcript.get("segments")
         row.detected_language = transcript.get("detected_language")
+
+        # Populate recording.duration_seconds (used by the daily summary).
+        duration = _duration_from_segments(transcript.get("segments"))
+        if duration is not None:
+            rec = session.execute(
+                select(RecordingModel).where(RecordingModel.id == recording_id)
+            ).scalar_one_or_none()
+            if rec is not None:
+                rec.duration_seconds = duration
 
     analysis = result.get("analysis_result")
     if isinstance(analysis, dict):
