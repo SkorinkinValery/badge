@@ -130,7 +130,7 @@ export default function RecordingCard() {
     >
       {/* pipeline */}
       <div className="mb-[22px] border border-border bg-bg px-[22px] py-5">
-        <div className="mb-[18px] flex flex-wrap justify-between gap-2">
+        <div className="mb-7 flex flex-wrap justify-between gap-2">
           <span className="mono text-[11px] uppercase tracking-[.08em] text-muted">
             Конвейер обработки
           </span>

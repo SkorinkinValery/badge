@@ -226,13 +226,16 @@ export function KpiChecklist({
 
 /* ---------- Pipeline stepper (diamond nodes) ---------- */
 export function PipelineStepper({ status, failed }: { status: string; failed?: boolean }) {
+  const isComplete = status === "done";
   const cur = STATUS_INDEX[status === "failed" ? "analyzing" : status] ?? 0;
   const failAt = failed ? cur : -1;
   return (
-    <div className="flex items-start overflow-x-auto pb-[6px]">
+    <div className="flex items-start overflow-x-auto pb-[6px] pt-1">
       {PIPELINE.map((s, i) => {
-        const done = i < cur;
-        const active = i === cur && !failed;
+        // When the pipeline is complete, the terminal step is "done" (green),
+        // not "active" (orange).
+        const done = i < cur || (isComplete && i === cur);
+        const active = i === cur && !failed && !isComplete;
         const isFail = failed && i === failAt;
         const col = isFail
           ? "var(--danger)"
@@ -261,7 +264,11 @@ export function PipelineStepper({ status, failed }: { status: string; failed?: b
               />
               <span
                 className="mono text-center text-[9.5px] tracking-[.04em] whitespace-nowrap"
-                style={{ color: active || isFail ? col : "var(--muted-2)", maxWidth: 62 }}
+                style={{
+                  color:
+                    active || isFail || (isComplete && i === cur) ? col : "var(--muted-2)",
+                  maxWidth: 62,
+                }}
               >
                 {s.ru}
               </span>

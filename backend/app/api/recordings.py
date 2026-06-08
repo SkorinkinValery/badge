@@ -31,6 +31,7 @@ class RecordingOut(BaseModel):
     audio_path: str | None
     stage_error: str | None
     retention_until: datetime | None
+    duration_seconds: float | None
 
 
 class SegmentOut(BaseModel):

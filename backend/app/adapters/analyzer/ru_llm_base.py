@@ -39,8 +39,17 @@ def parse_kpi_response(
             "comment": entry.comment,
         }
 
-    high = [k for k, v in kpi_json.items() if isinstance(v, dict) and v.get("value", 0) >= 8]
-    low = [k for k, v in kpi_json.items() if isinstance(v, dict) and v.get("value", 10) <= 3]
+    labels = {k.id: k.label for k in kpi_cfg.kpis}
+    high = [
+        labels.get(k, k)
+        for k, v in kpi_json.items()
+        if isinstance(v, dict) and v.get("value", 0) >= 8
+    ]
+    low = [
+        labels.get(k, k)
+        for k, v in kpi_json.items()
+        if isinstance(v, dict) and v.get("value", 10) <= 3
+    ]
     parts = [f"KPI проанализированы: {len(kpi_json)}."]
     if high:
         parts.append(f"Сильные стороны: {', '.join(high)}.")

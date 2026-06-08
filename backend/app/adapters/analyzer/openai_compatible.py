@@ -104,8 +104,17 @@ class OpenAICompatibleAnalyzer:
         return AnalysisResult(summary=summary, kpi_json=kpi_json)
 
     def _build_summary(self, kpi_json: dict[str, Any], transcript: Transcript) -> str:
-        high = [kid for kid, v in kpi_json.items() if isinstance(v, dict) and v.get("value", 0) >= 8]
-        low = [kid for kid, v in kpi_json.items() if isinstance(v, dict) and v.get("value", 10) <= 3]
+        labels = {k.id: k.label for k in self._kpi_cfg.kpis}
+        high = [
+            labels.get(kid, kid)
+            for kid, v in kpi_json.items()
+            if isinstance(v, dict) and v.get("value", 0) >= 8
+        ]
+        low = [
+            labels.get(kid, kid)
+            for kid, v in kpi_json.items()
+            if isinstance(v, dict) and v.get("value", 10) <= 3
+        ]
         parts: list[str] = [f"Транскрипт: {len(transcript.full_text)} симв."]
         if high:
             parts.append(f"Сильные стороны: {', '.join(high)}.")

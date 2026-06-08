@@ -21,7 +21,8 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M9 — Self-host LLM (vLLM + Qwen2.5) + RU-облако fallback** | ✅ | `7c4d90a` |
 | **M10 — Data & Metrics (eval_wer, eval_kpi, regression, calibrate, few_shot)** | ✅ | текущий |
 
-**Тесты на текущий момент: 652 backend (изолированная БД `badge_test`, `make test`) + 59 frontend** — зелёные; ruff + mypy --strict — зелёные.
+**Тесты на текущий момент: backend (изолированная БД `badge_test`, `make test`) + 62 frontend** — зелёные; ruff + mypy --strict — зелёные.
+**UI-стек:** фронт смигрирован с Mantine на **Tailwind v3.4 + Radix** (hydradb-стиль); см. журнал внизу и память `ui-stack-tailwind-radix`.
 
 ### Что сделано в M10 (последний milestone)
 - **`scripts/dataset.py`** — `DatasetEntry`/`GoldenTranscript`/`KpiLabel`/`EntryMeta` Pydantic-схемы; `load_dataset(dir)` — загрузка набора из `datasets/<id>/{meta,golden_transcript,kpi_labels}.json`; валидация KPI-ключей по `kpi.yaml`; пустой/отсутствующий каталог → `[]`.
@@ -235,8 +236,37 @@ docs/
 
 **Тесты:** frontend 63 passed (было 59); ruff/mypy не затронуты (фронтенд-таск).
 
-**Возможные дальнейшие шаги:**
-- Detail-страница менеджера `admin/managers/[id]` тоже отсутствует (список делает `router.push(`/admin/managers/${m.id}`)`) — аналогичная 404, не входила в эту задачу, но стоит проверить.
+**✅ UI-редизайн: Mantine → Tailwind + Radix (hydradb-стиль), все 16 экранов** (коммит `10e2036`, слит в `main`):
+- Дроп Mantine v7; UI на **Tailwind v3.4 + Radix** (Node 18 → не v4), тёмный «пиксельный» стиль hydradb. Эталон-прототип от claude design лежит в `design/` (untracked), промпт — `CLAUDE_DESIGN_PROMPT.md`.
+- `frontend/src/components/ui/*` (≈25 компонентов: Button/Panel/Modal+Toaster на Radix, StatCallout, KpiBars/TrendLine на SVG, PipelineStepper, VerdictToken, KpiChecklist, DataTable, EmptyState, Waveform…) + `components/app-shell/*` (ролевой адаптивный шелл) + `lib/{cn,types,pipeline,use-fetch,use-admin}.ts`.
+- Все экраны переписаны под реальный API с состояниями loading/empty/error и ролевым гейтингом; добавлены **Dashboard**, **detail/edit менеджера** (`admin/managers/[id]`) и **detail+версии скрипта** (`admin/scripts/[id]`) — закрыты битые ссылки; system 404/403/500. Лендинг → `/dashboard`.
+- Шрифты Handjet (пиксельный) + JetBrains Mono через `next/font` (кириллица). Тесты переписаны с `MantineProvider` на `renderUI`; **62 frontend** зелёные; `tsc`/`eslint`/`next build` чисты; Mantine удалён полностью. Память: `ui-stack-tailwind-radix`.
+
+**✅ Длительность звонка + корректность дневной сводки** (коммиты `92e2f23`, `aa3b3d9`, в `main`):
+- `recording.duration_seconds` теперь заполняется в `runner._persist_results` как `max(segment.end)` из транскрипта (колонка была с M6, но не писалась → сводка показывала 0м0с). Дев-история разово забэкфилена из существующих транскриптов (данные, не код). Память: `gotcha-duration-seconds-never-set`.
+- Дневная сводка: метрика сменена с «% звонков в норме» (всегда 100% при одном звонке) на **среднюю оценку KPI N/10** (как в карточке); «проблемные места» = слабые KPI (avg < 7). API (`admin.py`) отдаёт `kpi_type`+`avg_value`. Лейбл `closing` → «Завершение сделки».
+- Mic-экран: подпись поправлена — транскрипт появляется **после остановки** (бэкенд расшифровывает один раз; near-realtime отключён из-за WebM-контейнера).
+
+**🔧 Доработки по фидбэку (НЕ закоммичено — висит в рабочем дереве `main`):**
+- **Русские лейблы KPI в summary.** `openai_compatible.py` + `ru_llm_base.py` строили summary с сырыми id (`price_discussed`…) → подставляют русские лейблы из `kpi.yaml`. Существующая запись разово забэкфилена (id→лейбл в БД).
+- **Конвейер на карточке звонка** (`components/ui/data-display.tsx` + `recordings/[id]`): при `status=done` терминальный шаг «Готово» теперь зелёный (был оранжевый — попадал в `active`); увеличен зазор «Конвейер обработки» → ромбики (`mb-7` + `pt-1`).
+- **Длительность на карточке.** `RecordingOut` (`api/recordings.py`) не отдавал `duration_seconds` → на карточке всегда «—». Добавлено поле; карточка переиспользует то же значение, что и дневная сводка (заполняет `runner`). Шапка: «длит. M:SS · дата/время».
+- **Дев-данные** разово забэкфилены: `recording.duration_seconds` из транскриптов (`max(segment.end)`), summary id→лейбл.
+- **CRM-настройки (справка, не баг):** `active_crm`/params хранятся в `infra/config/providers.yaml`, в рантайме — `app.state.crm_config` (in-memory); `PUT /api/admin/settings` пишет **только в память** (не персистится между рестартами). Провайдер `json` = no-op (никуда не выгружает); реальная выгрузка — `google_sheets`/`webhook`/`bitrix24`. Возможная задача: персистить настройки (yaml/БД) + сделать `json`-экспорт осязаемым (файл/MinIO).
+
+**🔲 Следующая задача: реализовать редирект на пайплайн после записи с микрофона, как это сделано после загрузки записи.**
+
+Пайплайн падает на этапе `analyzing`:
+```
+Analyzer error: Error code: 401 - {'error': {'message': 'Incorrect API key provided: sk-proj-****…HqUA ...',
+'type': 'invalid_request_error', 'code': 'invalid_api_key'}, 'status': 401}
+```
+Активный LLM — `openai_compatible` (`gpt-4o-mini`); ключ невалиден/протух/неверного формата (`sk-proj-…`). Что нужно:
+1. Проследить, какой ключ и **откуда** читается: `config/settings.py` (`LLM_API_KEY`/`OPENAI_API_KEY`) → `infra/config/providers.yaml` (`active_llm`, секция `llm_profiles`) → `main.py:_make_analyzer()` → `adapters/analyzer/openai_compatible.py` → `app.state.analyzer`.
+2. Подставить рабочий ключ в `.env` **или** для дева переключить `active_llm` на `stub`/RU-провайдера (анализ без облака).
+3. Убедиться, что при невалидном ключе запись корректно уходит в `failed` со `stage_error` (а не молча зависает). Проверить `runner.py`/узел `analyzing` на проброс ошибки.
+
+Связано с открытым вопросом №1 (облачный LLM / ключ / ПДн).
 
 **Возможные дальнейшие шаги:**
 - Раскатка на staging/prod (Docker Compose → k8s или аналог).
