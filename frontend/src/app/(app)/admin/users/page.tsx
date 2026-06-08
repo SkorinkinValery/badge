@@ -1,53 +1,48 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  Badge,
-  Button,
-  Container,
-  Group,
-  PasswordInput,
-  Select,
-  Table,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { useCallback, useEffect, useState } from "react";
 import { authHeaders } from "@/lib/auth";
-
-interface User {
-  id: string;
-  login: string;
-  role: string;
-  is_active: boolean;
-}
-
-const ROLES = [
-  { value: "admin", label: "admin" },
-  { value: "viewer", label: "viewer" },
-];
+import { useIsAdmin } from "@/lib/use-admin";
+import type { User } from "@/lib/types";
+import { Page } from "@/components/app-shell/Page";
+import { Forbidden } from "@/components/system";
+import {
+  Button,
+  ConfirmDialog,
+  DataTable,
+  EmptyState,
+  Field,
+  Skeleton,
+  inputClass,
+  toast,
+} from "@/components/ui";
 
 export default function UsersPage() {
+  const admin = useIsAdmin();
   const [users, setUsers] = useState<User[]>([]);
   const [loaded, setLoaded] = useState(false);
-
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<string>("viewer");
+  const [role, setRole] = useState("viewer");
   const [error, setError] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<User | null>(null);
 
-  const reload = () => {
+  const reload = useCallback(() => {
     fetch("/api/admin/users", { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => {
         setUsers(data as User[]);
         setLoaded(true);
       });
-  };
+  }, []);
 
-  useEffect(reload, []);
+  useEffect(() => {
+    if (admin) reload();
+  }, [admin, reload]);
 
-  const createUser = async () => {
+  if (admin === false) return <Forbidden />;
+
+  async function createUser() {
     setError(null);
     const resp = await fetch("/api/admin/users", {
       method: "POST",
@@ -62,95 +57,128 @@ export default function UsersPage() {
     setLogin("");
     setPassword("");
     setRole("viewer");
+    toast("Пользователь создан", "success");
     reload();
-  };
+  }
 
-  const toggleActive = async (u: User) => {
+  async function toggleActive(u: User) {
     await fetch(`/api/admin/users/${u.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ is_active: !u.is_active }),
     });
     reload();
-  };
+  }
 
-  const removeUser = async (u: User) => {
-    await fetch(`/api/admin/users/${u.id}`, {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
+  async function removeUser(u: User) {
+    await fetch(`/api/admin/users/${u.id}`, { method: "DELETE", headers: authHeaders() });
+    toast("Пользователь удалён", "success");
     reload();
-  };
-
-  if (!loaded) return null;
+  }
 
   return (
-    <Container mt={40}>
-      <Title order={2} mb="md">Пользователи</Title>
-
-      <Group align="flex-end" mb="lg">
-        <TextInput
-          label="Логин"
-          value={login}
-          onChange={(e) => setLogin(e.currentTarget.value)}
-        />
-        <PasswordInput
-          label="Пароль"
-          value={password}
-          onChange={(e) => setPassword(e.currentTarget.value)}
-        />
-        <Select
-          label="Роль"
-          data={ROLES}
-          value={role}
-          onChange={(v) => setRole(v ?? "viewer")}
-          allowDeselect={false}
-        />
-        <Button onClick={createUser} disabled={!login || !password}>
+    <Page title="Пользователи" kicker="Администрирование">
+      <div className="mb-6 flex flex-wrap items-end gap-3 border border-border bg-bg p-[18px]">
+        <div className="w-[180px]">
+          <Field label="Логин">
+            <input className={inputClass} value={login} onChange={(e) => setLogin(e.target.value)} />
+          </Field>
+        </div>
+        <div className="w-[180px]">
+          <Field label="Пароль">
+            <input className={inputClass} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+        </div>
+        <div className="w-[160px]">
+          <Field label="Роль">
+            <select className={inputClass} value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="viewer">viewer</option>
+              <option value="admin">admin</option>
+            </select>
+          </Field>
+        </div>
+        <Button sm onClick={createUser} disabled={!login || !password}>
           Создать
         </Button>
-      </Group>
-      {error && <Text c="red" mb="md">{error}</Text>}
-
-      {users.length === 0 ? (
-        <Text>Нет пользователей</Text>
-      ) : (
-        <Table striped highlightOnHover>
-          <thead>
-            <tr>
-              <th>Логин</th>
-              <th>Роль</th>
-              <th>Статус</th>
-              <th>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td>{u.login}</td>
-                <td>
-                  <Badge color={u.role === "admin" ? "blue" : "gray"}>{u.role}</Badge>
-                </td>
-                <td>
-                  <Badge color={u.is_active ? "green" : "gray"}>
-                    {u.is_active ? "Активен" : "Неактивен"}
-                  </Badge>
-                </td>
-                <td>
-                  <Group gap="xs">
-                    <Button size="xs" variant="light" onClick={() => toggleActive(u)}>
-                      {u.is_active ? "Деактивировать" : "Активировать"}
-                    </Button>
-                    <Button size="xs" color="red" variant="light" onClick={() => removeUser(u)}>
-                      Удалить
-                    </Button>
-                  </Group>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+      </div>
+      {error && (
+        <div role="alert" className="mb-4 border border-danger/40 bg-danger/[0.08] px-[13px] py-[10px] text-[12.5px] text-danger">
+          {error}
+        </div>
       )}
-    </Container>
+
+      {!loaded ? (
+        <div className="border border-border">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="border-b border-border px-[18px] py-4">
+              <Skeleton h={16} />
+            </div>
+          ))}
+        </div>
+      ) : users.length === 0 ? (
+        <EmptyState title="Нет пользователей" desc="Создайте учётную запись, чтобы открыть доступ к анализу звонков." />
+      ) : (
+        <DataTable
+          highlightCol={1}
+          rows={users}
+          cols={[
+            { h: "Логин", nowrap: true, cell: (u) => <span className="mono text-[13px]">{u.login}</span> },
+            {
+              h: "Роль",
+              nowrap: true,
+              cell: (u) => (
+                <span
+                  className="mono border px-[9px] py-1 text-[10.5px] uppercase tracking-[.08em]"
+                  style={{
+                    borderColor: u.role === "admin" ? "var(--accent)" : "var(--border-2)",
+                    color: u.role === "admin" ? "var(--accent)" : "var(--muted)",
+                  }}
+                >
+                  {u.role}
+                </span>
+              ),
+            },
+            {
+              h: "Статус",
+              nowrap: true,
+              cell: (u) => (
+                <span
+                  className="mono inline-flex items-center gap-[7px] text-[11px]"
+                  style={{ color: u.is_active ? "var(--success)" : "var(--muted-2)" }}
+                >
+                  <span style={{ width: 7, height: 7, background: u.is_active ? "var(--success)" : "var(--muted-2)" }} />
+                  {u.is_active ? "Активен" : "Неактивен"}
+                </span>
+              ),
+            },
+            {
+              h: "",
+              align: "right",
+              nowrap: true,
+              cell: (u) => (
+                <span className="flex justify-end gap-3">
+                  <button className="mono text-[11px] text-muted hover:text-accent" onClick={() => toggleActive(u)}>
+                    {u.is_active ? "деактивировать" : "активировать"}
+                  </button>
+                  <button className="mono text-[11px] text-danger" onClick={() => setToDelete(u)}>
+                    удалить
+                  </button>
+                </span>
+              ),
+            },
+          ]}
+        />
+      )}
+
+      <ConfirmDialog
+        open={toDelete != null}
+        title="Удалить пользователя?"
+        body={`Доступ для «${toDelete?.login}» будет отозван немедленно. Это действие необратимо.`}
+        confirmText="Удалить"
+        danger
+        onConfirm={() => toDelete && removeUser(toDelete)}
+        onClose={() => setToDelete(null)}
+      />
+    </Page>
   );
 }

@@ -1,17 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderUI } from "./render";
 import ScoreCorrectionForm from "@/components/ScoreCorrectionForm";
 
 vi.mock("@/lib/auth", () => ({
   getToken: () => "test-token",
   authHeaders: () => ({ Authorization: "Bearer test-token" }),
+  isAdmin: () => true,
   storeToken: vi.fn(),
   clearToken: vi.fn(),
 }));
 
 function wrap(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return renderUI(ui);
 }
 
 const defaultProps = {

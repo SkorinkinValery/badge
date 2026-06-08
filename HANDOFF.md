@@ -21,7 +21,7 @@ MVP «Аудиобейдж» — расширяемое ядро AI-анализ
 | **M9 — Self-host LLM (vLLM + Qwen2.5) + RU-облако fallback** | ✅ | `7c4d90a` |
 | **M10 — Data & Metrics (eval_wer, eval_kpi, regression, calibrate, few_shot)** | ✅ | текущий |
 
-**Тесты на текущий момент: 648 backend (изолированная БД `badge_test`, `make test`) + 55 frontend** — зелёные; ruff + mypy --strict — зелёные.
+**Тесты на текущий момент: 652 backend (изолированная БД `badge_test`, `make test`) + 59 frontend** — зелёные; ruff + mypy --strict — зелёные.
 
 ### Что сделано в M10 (последний milestone)
 - **`scripts/dataset.py`** — `DatasetEntry`/`GoldenTranscript`/`KpiLabel`/`EntryMeta` Pydantic-схемы; `load_dataset(dir)` — загрузка набора из `datasets/<id>/{meta,golden_transcript,kpi_labels}.json`; валидация KPI-ключей по `kpi.yaml`; пустой/отсутствующий каталог → `[]`.
@@ -210,9 +210,33 @@ docs/
 
 **Тесты после этого блока:** backend 648 passed; CI-job `test` локально прогнан end-to-end (инфра → валидация миграций → pytest) — зелёный; dev-БД `:5434` больше не трогается тестами.
 
-**🔲 Следующая задача: в UI нет возможности загрузить запись файлом.**
+**✅ Исправлен критический баг: пайплайн всегда обрабатывал тишину вместо реального аудио + добавлена UI-форма загрузки записей** (коммиты `4c2ec2a`, `6286b5f`):
 
-Бэкенд `POST /api/uploads` (`backend/app/api/uploads.py`, требует роль admin) существует и работает, но во фронтенде нет страницы/формы, которая бы его вызывала — есть только запись с микрофона (`recordings/record`, `POST /api/ws/mic`) и загрузка эталонных скриптов (`admin/scripts`). Нужно добавить UI-страницу/форму для загрузки готового аудиофайла записи разговора (выбор менеджера, согласие `consent_flag`, файл) с вызовом `POST /api/uploads`.
+**Причина:** узел `normalizing` в `core/pipeline/nodes.py` всегда вызывал `FileStubSource()`, игнорируя `recording.audio_path` из БД, и клал в `audio_payload["audio_data"]` placeholder-строку `"<bytes>"`. Узел `transcribing` не находил там `bytes` и подставлял `b"\x00" * 100` (тишину) → STT-движок транскрибировал тишину → пустой транскрипт → анализ по пустому тексту → счёт 0/100 на любой реальной записи. Баг касался обоих каналов: `channel=file` (как описано) и `channel=mic` (вторично — `audio_accum` из `ws_mic.py` никогда не загружался в MinIO, `recording.audio_path` оставался `None`).
+
+**Что исправлено:**
+- `core/pipeline/state.py` — добавлены поля `audio_path`, `manager_id`, `consent_flag`, `channel`.
+- `core/pipeline/nodes.py` / `graph.py` — `make_nodes`/`build_graph` принимают `storage: ObjectStorage | None`; `normalizing` при наличии `storage`+`audio_path` вызывает уже существующие (написанные ещё в M2, но не подключённые к графу) `normalize_audio()`/`FileSource` и кладёт в `audio_payload` ключ нормализованного файла в MinIO (а не сырые байты — чтобы не раздувать LangGraph/Postgres checkpoint); `transcribing` дозагружает реальные байты через `FileSource.fetch()`. Без `storage`/`audio_path` (юнит-тесты, легаси-записи) — прежнее поведение на стабах.
+- `workers/runner.py` — перед `graph.invoke` запрашивает `RecordingRepository.get(recording_id)`, кладёт реальные `audio_path`/`manager_id`/`consent_flag`/`channel` в `initial_state`; принимает и прокидывает `storage`.
+- `main.py` — инициализирует `app.state.storage = ObjectStorage(...)` при старте; `uploads.py`/`recordings.py`/`ws_mic.py` прокидывают `storage` в `run_job`/`_kick_pipeline`.
+- `ws_mic.py` — добавлен `_persist_mic_audio()`: при `stop` накопленные байты `audio_accum` загружаются в MinIO (`make_key(recording_id, "original", ".webm")`), `recording.audio_path` обновляется в БД — устранён вторичный mic-баг.
+- **Новая UI-страница** `frontend/src/app/(app)/recordings/upload/page.tsx` — форма загрузки готового аудиофайла (выбор менеджера, согласие `consent_flag`, файл) с вызовом `POST /api/uploads`; добавлена ссылка в навигацию (`(app)/layout.tsx`).
+- Тесты: `test_normalizing_node.py` (новый), расширены `test_transcribing_node.py`, `test_runner.py` (реальный WAV через MinIO + `CapturingSTTEngine`, проверка что байты ≠ стаб), `test_ws_mic.py` (проверка `audio_path` после `stop`), `upload-page.test.tsx`.
+
+Проверено живым e2e-прогоном на реальной записи `a5e05a52-...`: пере-запуск пайплайна дал `/transcript` на 2829 символов / 71 сегмент с точным русским текстом разговора (бронирование детского праздника в «Хиропарк»), `/analysis` — score 70/100 с KPI, обоснованными цитатами из реального звонка (раньше — пустой транскрипт и 0/100).
+
+**✅ Исправлена 404 на `/admin/managers/new` — добавлена форма создания менеджера:**
+
+**Причина:** кнопка «Добавить менеджера» на `frontend/src/app/(app)/admin/managers/page.tsx` уже делала `router.push("/admin/managers/new")`, но самой страницы/роута не существовало.
+
+**Что сделано:**
+- Новая страница `frontend/src/app/(app)/admin/managers/new/page.tsx` — форма (ФИО, должность, Device ID опционально, выбор скрипта по умолчанию из активных `/api/scripts`), `POST /api/managers`, редирект на список менеджеров после успеха, читаемые ошибки (`409 device_id already in use` и т.п.) — по образцу `recordings/upload/page.tsx`.
+- Тесты `frontend/src/test/new-manager-page.test.tsx` (4) — фильтр активных скриптов, дизейбл кнопки до заполнения обязательных полей, сабмит/редирект, отображение ошибки.
+
+**Тесты:** frontend 63 passed (было 59); ruff/mypy не затронуты (фронтенд-таск).
+
+**Возможные дальнейшие шаги:**
+- Detail-страница менеджера `admin/managers/[id]` тоже отсутствует (список делает `router.push(`/admin/managers/${m.id}`)`) — аналогичная 404, не входила в эту задачу, но стоит проверить.
 
 **Возможные дальнейшие шаги:**
 - Раскатка на staging/prod (Docker Compose → k8s или аналог).

@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
+import { screen, waitFor } from "@testing-library/react";
+import { renderUI } from "./render";
 import RecordingCard from "@/app/(app)/recordings/[id]/page";
 
 vi.mock("@/lib/auth", () => ({
   getToken: () => "test-token",
   authHeaders: () => ({ Authorization: "Bearer test-token" }),
+  isAdmin: () => false,
   storeToken: vi.fn(),
   clearToken: vi.fn(),
 }));
@@ -16,7 +17,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 function wrap(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return renderUI(ui);
 }
 
 const TRANSCRIPT = {

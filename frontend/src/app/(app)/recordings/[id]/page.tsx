@@ -1,79 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { authHeaders, isAdmin } from "@/lib/auth";
+import { verdictFromScore, type Verdict } from "@/lib/pipeline";
+import type { Analysis, KpiItem, KpiValue, Recording, Transcript } from "@/lib/types";
+import { Page } from "@/components/app-shell/Page";
+import ScoreCorrectionForm from "@/components/ScoreCorrectionForm";
 import {
-  Alert,
-  Badge,
-  Card,
-  Container,
-  Group,
-  Stack,
-  Table,
-  Text,
-  ThemeIcon,
-  Title,
-} from "@mantine/core";
-import { authHeaders } from "@/lib/auth";
+  Button,
+  Modal,
+  Panel,
+  PipelineStepper,
+  ScaleBar,
+  Skeleton,
+  VerdictToken,
+  toast,
+} from "@/components/ui";
 
-interface Segment {
-  start: number;
-  end: number;
-  text: string;
-}
-
-interface KpiEntry {
-  value: number;
-  quote: string;
-  comment: string;
-}
-
-interface Transcript {
-  full_text: string;
-  segments: Segment[];
-  detected_language: string;
-}
-
-interface Analysis {
-  summary: string;
-  kpi_json: Record<string, KpiEntry | number>;
-  score: number | null;
-  auto_score: number | null;
-  verdict: string | null;
-  mode: string;
-  weights_version: string | null;
-}
-
-interface Recording {
-  id: string;
-  channel: string;
-  status: string;
-  created_at: string;
-  stage_error: string | null;
-  retention_until: string | null;
-}
-
-interface KpiMeta {
-  id: string;
-  label: string;
-  type: string;
-  weight: number;
-  applies_to: string;
-  include_in_score: boolean;
-}
-
-const VERDICT_COLOR: Record<string, string> = { "+": "green", "~": "yellow", "-": "red" };
-const VERDICT_LABEL: Record<string, string> = {
-  "+": "Хорошо",
-  "~": "Удовлетворительно",
-  "-": "Требует внимания",
-};
-
-// Fetch JSON only on a 2xx response; otherwise null (so a 404 "not found"
-// payload never leaks into the UI and crashes Object.entries).
-async function fetchOk<T>(url: string, headers: HeadersInit): Promise<T | null> {
+async function fetchOk<T>(url: string): Promise<T | null> {
   try {
-    const r = await fetch(url, { headers });
+    const r = await fetch(url, { headers: authHeaders() });
     if (!r.ok) return null;
     return (await r.json()) as T;
   } catch {
@@ -81,8 +28,14 @@ async function fetchOk<T>(url: string, headers: HeadersInit): Promise<T | null> 
   }
 }
 
-function kpiValue(entry: KpiEntry | number): number {
-  return typeof entry === "object" ? entry.value : entry;
+function kpiValue(entry: KpiValue): number {
+  if (typeof entry === "number") return entry;
+  if (typeof entry === "boolean") return entry ? 10 : 0;
+  if (entry && typeof entry === "object" && "value" in entry) {
+    const v = entry.value;
+    return typeof v === "number" ? v : v ? 10 : 0;
+  }
+  return 0;
 }
 
 export default function RecordingCard() {
@@ -92,16 +45,21 @@ export default function RecordingCard() {
   const [recording, setRecording] = useState<Recording | null>(null);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const [kpiMeta, setKpiMeta] = useState<KpiMeta[]>([]);
+  const [kpiMeta, setKpiMeta] = useState<KpiItem[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [admin, setAdmin] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => setAdmin(isAdmin()), []);
 
   useEffect(() => {
-    const h = authHeaders();
+    setLoaded(false);
     Promise.all([
-      fetchOk<Recording>(`/api/recordings/${id}`, h),
-      fetchOk<Transcript>(`/api/recordings/${id}/transcript`, h),
-      fetchOk<Analysis>(`/api/recordings/${id}/analysis`, h),
-      fetchOk<KpiMeta[]>(`/api/kpi`, h),
+      fetchOk<Recording>(`/api/recordings/${id}`),
+      fetchOk<Transcript>(`/api/recordings/${id}/transcript`),
+      fetchOk<Analysis>(`/api/recordings/${id}/analysis`),
+      fetchOk<KpiItem[]>(`/api/kpi`),
     ]).then(([rec, t, a, k]) => {
       setRecording(rec);
       setTranscript(t && Array.isArray(t.segments) ? t : null);
@@ -109,153 +67,240 @@ export default function RecordingCard() {
       setKpiMeta(Array.isArray(k) ? k : []);
       setLoaded(true);
     });
+  }, [id, reloadKey]);
+
+  const reanalyze = useCallback(async () => {
+    await fetch(`/api/recordings/${id}/process`, { method: "POST", headers: authHeaders() });
+    toast("Звонок отправлен на повторный анализ", "info");
   }, [id]);
 
+  const crumb = [{ label: "Записи", href: "/recordings" }, { label: id?.slice(0, 8) }];
+
+  if (!loaded) {
+    return (
+      <Page wide crumb={crumb} title="Загрузка…">
+        <Skeleton h={110} className="mb-5" />
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.45fr_1fr]">
+          <Skeleton h={420} />
+          <Skeleton h={420} />
+        </div>
+      </Page>
+    );
+  }
+
+  if (!recording) {
+    return (
+      <Page wide crumb={crumb} title="Запись не найдена">
+        <p className="text-muted">Запрашиваемая запись не существует или была удалена.</p>
+      </Page>
+    );
+  }
+
   const metaById = new Map(kpiMeta.map((m) => [m.id, m]));
-  // Order KPI rows by the rubric (kpi.yaml) when we have it; otherwise as-is.
-  const kpiEntries: Array<[string, KpiEntry | number]> = analysis
-    ? (kpiMeta.length > 0
-        ? kpiMeta
-            .filter((m) => m.id in analysis.kpi_json)
-            .map((m) => [m.id, analysis.kpi_json[m.id]] as [string, KpiEntry | number])
-        : Object.entries(analysis.kpi_json))
+  const kpiEntries: [string, KpiValue][] = analysis
+    ? kpiMeta.length > 0
+      ? kpiMeta
+          .filter((m) => analysis.kpi_json != null && m.id in analysis.kpi_json)
+          .map((m) => [m.id, analysis.kpi_json![m.id]] as [string, KpiValue])
+      : Object.entries(analysis.kpi_json ?? {})
     : [];
 
+  const score = analysis?.score ?? null;
+  const verdict: Verdict | null =
+    analysis == null ? null : analysis.verdict ?? (score != null ? verdictFromScore(score) : null);
+
+  const failed = recording.status === "failed";
+  const dur = recording.duration_seconds
+    ? `${Math.floor(recording.duration_seconds / 60)}:${String(Math.round(recording.duration_seconds % 60)).padStart(2, "0")}`
+    : "—";
+
   return (
-    <Container mt={40} mb={60}>
-      <Title order={2} mb="md">Карточка разговора</Title>
-      <Stack>
-        {recording && (
-          <Card withBorder>
-            <Group gap="xl">
-              <Group gap="xs">
-                <Text fw={600}>Статус:</Text>
-                <Badge color={recording.status === "done" ? "green" : recording.status === "failed" ? "red" : "blue"}>
-                  {recording.status}
-                </Badge>
-              </Group>
-              <Group gap="xs">
-                <Text fw={600}>Канал:</Text>
-                <Text>{recording.channel}</Text>
-              </Group>
-              <Group gap="xs">
-                <Text fw={600}>Дата:</Text>
-                <Text>{new Date(recording.created_at).toLocaleString("ru-RU")}</Text>
-              </Group>
-              <Group gap="xs">
-                <Text fw={600}>Хранить до:</Text>
-                <Text>
-                  {recording.retention_until
-                    ? new Date(recording.retention_until).toLocaleString("ru-RU")
-                    : "—"}
-                </Text>
-              </Group>
-            </Group>
-          </Card>
-        )}
-
-        {recording?.status === "failed" && recording.stage_error && (
-          <Alert color="red" title="Ошибка обработки">
+    <Page
+      wide
+      crumb={crumb}
+      title="Разбор звонка"
+      kicker={recording.channel === "mic" ? "С микрофона" : "Загруженный файл"}
+      actions={
+        admin ? (
+          <Button variant="ghost" sm onClick={reanalyze}>
+            ↻ Переанализировать
+          </Button>
+        ) : null
+      }
+    >
+      {/* pipeline */}
+      <div className="mb-[22px] border border-border bg-bg px-[22px] py-5">
+        <div className="mb-[18px] flex flex-wrap justify-between gap-2">
+          <span className="mono text-[11px] uppercase tracking-[.08em] text-muted">
+            Конвейер обработки
+          </span>
+          <span className="mono text-[11px] text-muted">
+            длит. {dur} · {recording.created_at.replace("T", " ").slice(0, 16)}
+          </span>
+        </div>
+        <PipelineStepper status={recording.status} failed={failed} />
+        {failed && recording.stage_error && (
+          <div className="mono mt-4 border-l-2 border-danger pl-3 text-[12px] text-danger">
             {recording.stage_error}
-          </Alert>
+          </div>
         )}
+      </div>
 
-        {analysis ? (
-          <Card withBorder>
-            <Group justify="space-between" mb="md">
-              <Group gap="xs" align="baseline">
-                <Text fw={600}>Итоговый балл:</Text>
-                <Text fz={32} fw={700}>{analysis.score ?? "—"}</Text>
-                <Text c="dimmed">/ 100</Text>
-              </Group>
-              {analysis.verdict && (
-                <Group gap="xs" wrap="nowrap">
-                  <Badge size="xl" color={VERDICT_COLOR[analysis.verdict] ?? "gray"}>
-                    {analysis.verdict}
-                  </Badge>
-                  <Text fw={600}>{VERDICT_LABEL[analysis.verdict] ?? ""}</Text>
-                </Group>
-              )}
-            </Group>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.45fr_1fr]">
+        {/* transcript */}
+        <Panel
+          title="Транскрипт"
+          pad={0}
+          right={
+            transcript?.detected_language ? (
+              <span className="mono text-[10.5px] text-muted-2">
+                язык · {transcript.detected_language}
+              </span>
+            ) : undefined
+          }
+        >
+          {transcript && transcript.segments && transcript.segments.length > 0 ? (
+            <div className="max-h-[560px] overflow-y-auto py-2">
+              {transcript.segments.map((seg, i) => (
+                <div key={i} className="flex gap-[14px] px-5 py-[11px]">
+                  <span className="mono w-[44px] flex-none pt-[2px] text-[11px] text-muted-2">
+                    {Math.floor(seg.start / 60)}:{String(Math.floor(seg.start % 60)).padStart(2, "0")}
+                  </span>
+                  <div className="min-w-0 text-[13.5px]">{seg.text}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-5 py-10 text-center text-[13px] text-muted-2">
+              Транскрипт недоступен — текст разговора ещё не сформирован.
+            </div>
+          )}
+        </Panel>
 
-            {analysis.summary && (
-              <>
-                <Text fw={600} mb={4}>Резюме:</Text>
-                <Text mb="md">{analysis.summary}</Text>
-              </>
+        {/* score + KPI */}
+        <div className="flex flex-col gap-5">
+          <div className="border border-border bg-bg px-[22px] py-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="mono mb-[10px] text-[10.5px] uppercase tracking-[.1em] text-muted">
+                  Итоговый балл
+                </div>
+                <div className="flex items-end gap-3">
+                  <span className="num" style={{ fontSize: 64, lineHeight: 0.8 }}>
+                    {score ?? "—"}
+                  </span>
+                  <span className="num text-muted-2" style={{ fontSize: 22, paddingBottom: 7 }}>
+                    /100
+                  </span>
+                </div>
+              </div>
+              {verdict && <VerdictToken verdict={verdict} size={56} />}
+            </div>
+            {verdict && (
+              <div
+                className="mono mt-4 text-[12px] tracking-[.08em]"
+                style={{
+                  color:
+                    verdict === "+"
+                      ? "var(--success)"
+                      : verdict === "~"
+                        ? "var(--neutral)"
+                        : "var(--danger)",
+                }}
+              >
+                {verdict === "+" ? "СООТВЕТСТВУЕТ" : verdict === "~" ? "ЧАСТИЧНО" : "НЕ СООТВЕТСТВУЕТ"}
+              </div>
             )}
+            {analysis?.summary && (
+              <p className="mt-4 border-t border-border pt-4 text-[13px] text-muted">
+                {analysis.summary}
+              </p>
+            )}
+            {admin && analysis && (
+              <div className="mt-[18px] border-t border-border pt-4">
+                <Button variant="ghost" sm full onClick={() => setCorrecting(true)}>
+                  ✎ Скорректировать оценку
+                </Button>
+              </div>
+            )}
+          </div>
 
-            <Text fw={600} mb="xs">KPI — чек-лист по этапам разговора:</Text>
-            <Table striped withTableBorder>
-              <thead>
-                <tr>
-                  <th>Этап / признак</th>
-                  <th>Оценка</th>
-                  <th>Цитата</th>
-                  <th>Комментарий</th>
-                </tr>
-              </thead>
-              <tbody>
+          {analysis ? (
+            <Panel
+              title="Чек-лист KPI"
+              right={
+                <span className="mono text-[10px] text-muted-2">
+                  режим · {analysis.mode === "script" ? "скрипт" : "база"}
+                </span>
+              }
+            >
+              <div className="flex flex-col">
                 {kpiEntries.map(([key, entry]) => {
                   const meta = metaById.get(key);
-                  const e = typeof entry === "object" ? (entry as KpiEntry) : null;
                   const val = kpiValue(entry);
                   const isFact = meta?.type === "fact";
+                  const e = entry && typeof entry === "object" ? entry : null;
                   return (
-                    <tr key={key}>
-                      <td>{meta?.label ?? key}</td>
-                      <td>
+                    <div key={key} className="border-b border-border py-[14px]">
+                      <div className="mb-[9px] flex justify-between gap-3">
+                        <span className="text-[13.5px]">{meta?.label ?? key}</span>
                         {isFact ? (
-                          <Group gap={4} wrap="nowrap">
-                            <ThemeIcon size="sm" radius="xl" color={val >= 10 ? "green" : "red"}>
-                              {val >= 10 ? "✓" : "✗"}
-                            </ThemeIcon>
-                            <Text size="sm">{val >= 10 ? "да" : "нет"}</Text>
-                          </Group>
+                          <span
+                            className="mono text-[13px] font-bold"
+                            style={{ color: val >= 10 ? "var(--success)" : "var(--danger)" }}
+                          >
+                            {val >= 10 ? "✓ ДА" : "✗ НЕТ"}
+                          </span>
                         ) : (
-                          <Badge color={val >= 8 ? "green" : val >= 5 ? "yellow" : "red"}>
-                            {val} / 10
-                          </Badge>
+                          <span className="mono text-[10.5px] text-muted-2">
+                            вес ×{meta?.weight ?? 1}
+                          </span>
                         )}
-                      </td>
-                      <td>{e?.quote ?? ""}</td>
-                      <td>{e?.comment ?? ""}</td>
-                    </tr>
+                      </div>
+                      {!isFact && <ScaleBar v={val} max={10} />}
+                      {e?.quote && (
+                        <div className="mono mt-2 border-l-2 border-accent pl-2 text-[11.5px] text-muted">
+                          {e.quote}
+                        </div>
+                      )}
+                      {e?.comment && (
+                        <div className="mt-1 text-[12px] text-muted-2">{e.comment}</div>
+                      )}
+                    </div>
                   );
                 })}
-              </tbody>
-            </Table>
-          </Card>
-        ) : (
-          recording && recording.status !== "failed" && (
-            <Alert color="gray" title="Анализ ещё не готов">
-              KPI и оценка появятся после завершения обработки записи (статус «done»).
-            </Alert>
-          )
-        )}
+              </div>
+            </Panel>
+          ) : (
+            !failed && (
+              <Panel title="Чек-лист KPI">
+                <div className="py-6 text-center text-[13px] text-muted-2">
+                  Анализ ещё не готов — KPI появятся после обработки.
+                </div>
+              </Panel>
+            )
+          )}
+        </div>
+      </div>
 
-        {transcript ? (
-          <Card withBorder>
-            <Text fw={600} mb="xs">Транскрипт:</Text>
-            <Text mb="md">{transcript.full_text}</Text>
-            <Text fw={600} mb="xs">Сегменты:</Text>
-            <Stack gap={4}>
-              {transcript.segments.map((seg, i) => (
-                <Group key={i} gap="xs">
-                  <Text size="xs" c="dimmed">[{seg.start.toFixed(1)}–{seg.end.toFixed(1)}]</Text>
-                  <Text size="sm">{seg.text}</Text>
-                </Group>
-              ))}
-            </Stack>
-          </Card>
-        ) : (
-          loaded && recording && (
-            <Alert color="gray" title="Транскрипт недоступен">
-              Текст разговора ещё не сформирован.
-            </Alert>
-          )
-        )}
-      </Stack>
-    </Container>
+      <Modal open={correcting} onClose={() => setCorrecting(false)} title="Коррекция оценки" w={420}>
+        <div className="p-6">
+          <h2 className="disp mb-3 text-[22px]">Коррекция оценки</h2>
+          {analysis && (
+            <ScoreCorrectionForm
+              recordingId={id}
+              currentScore={analysis.score}
+              autoScore={analysis.auto_score}
+              currentVerdict={analysis.verdict}
+              onSaved={() => {
+                setCorrecting(false);
+                toast("Оценка обновлена", "success");
+                setReloadKey((k) => k + 1);
+              }}
+            />
+          )}
+        </div>
+      </Modal>
+    </Page>
   );
 }

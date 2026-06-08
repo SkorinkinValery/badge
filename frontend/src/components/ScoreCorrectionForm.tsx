@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Alert, Button, Group, NumberInput, Stack, Text } from "@mantine/core";
 import { authHeaders } from "@/lib/auth";
+import { Button, Field, inputClass } from "@/components/ui";
 
 interface Props {
   recordingId: string;
@@ -18,7 +18,7 @@ export default function ScoreCorrectionForm({
   autoScore,
   onSaved,
 }: Props) {
-  const [score, setScore] = useState<number | "">(currentScore ?? "");
+  const [score, setScore] = useState<string>(currentScore != null ? String(currentScore) : "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -29,7 +29,7 @@ export default function ScoreCorrectionForm({
       const resp = await fetch(`/api/recordings/${recordingId}/analysis`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ score: score === "" ? null : score }),
+        body: JSON.stringify({ score: score === "" ? null : Number(score) }),
       });
       const body = await resp.json();
       if (!resp.ok) throw new Error(body?.detail ?? "Ошибка сохранения");
@@ -42,29 +42,33 @@ export default function ScoreCorrectionForm({
   }
 
   return (
-    <Stack>
+    <div className="flex flex-col gap-4">
       {autoScore !== null && (
-        <Text size="sm" c="dimmed">
-          Исходная оценка: {autoScore}
-        </Text>
+        <p className="text-[13px] text-muted">Исходная оценка: {autoScore}</p>
       )}
       {error && (
-        <Alert role="alert" color="red" title="Ошибка">
+        <div
+          role="alert"
+          className="border border-danger/40 bg-danger/[0.08] px-[13px] py-[10px] text-[12.5px] text-danger"
+        >
           {error}
-        </Alert>
+        </div>
       )}
-      <NumberInput
-        label="Оценка"
-        min={0}
-        max={100}
-        value={score}
-        onChange={(v) => setScore(v as number | "")}
-      />
-      <Group>
-        <Button loading={loading} onClick={handleSave}>
-          Сохранить
+      <Field label="Оценка">
+        <input
+          className={inputClass}
+          type="number"
+          min={0}
+          max={100}
+          value={score}
+          onChange={(e) => setScore(e.target.value)}
+        />
+      </Field>
+      <div>
+        <Button onClick={handleSave} disabled={loading}>
+          {loading ? "Сохранение…" : "Сохранить"}
         </Button>
-      </Group>
-    </Stack>
+      </div>
+    </div>
   );
 }

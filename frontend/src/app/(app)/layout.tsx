@@ -2,29 +2,25 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import {
-  AppShell,
-  Button,
-  Group,
-  NavLink,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
-import { clearToken, getRole, getToken } from "@/lib/auth";
+import { clearToken, getLogin, getRole, getToken } from "@/lib/auth";
+import { Toaster } from "@/components/ui";
+import { Header } from "@/components/app-shell/Header";
+import { Sidebar } from "@/components/app-shell/Sidebar";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<string | null>(null);
+  const [login, setLogin] = useState<string | null>(null);
+  const [drawer, setDrawer] = useState(false);
 
   useEffect(() => {
     if (!getToken()) {
       router.replace("/login");
       return;
     }
-    setIsAdmin(getRole() === "admin");
+    setRole(getRole());
+    setLogin(getLogin());
     setReady(true);
   }, [router]);
 
@@ -34,80 +30,45 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   if (!ready) return null;
+  const isAdmin = role === "admin";
 
   return (
-    <AppShell
-      header={{ height: 56 }}
-      navbar={{ width: 220, breakpoint: "sm" }}
-      padding="md"
-    >
-      <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <Title order={4}>Аудиобейдж</Title>
-          <Button variant="subtle" size="sm" onClick={handleLogout}>
-            Выйти
-          </Button>
-        </Group>
-      </AppShell.Header>
+    <div>
+      <Header
+        login={login}
+        role={role}
+        onBurger={() => setDrawer(true)}
+        onLogout={handleLogout}
+      />
+      <div className="flex" style={{ minHeight: "calc(100vh - var(--header-h))" }}>
+        <div className="hidden md:block">
+          <Sidebar isAdmin={isAdmin} />
+        </div>
+        <main className="gridlines min-w-0 flex-1">{children}</main>
+      </div>
 
-      <AppShell.Navbar p="sm">
-        <Stack gap={4}>
-          <Text size="xs" fw={600} c="dimmed" tt="uppercase" px={8} py={4}>
-            Звонки
-          </Text>
-          <NavLink
-            component={Link}
-            href="/recordings"
-            label="Записи"
+      {drawer && (
+        <div className="fixed inset-0 z-[120] flex md:hidden">
+          <div
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setDrawer(false)}
           />
-          <NavLink
-            component={Link}
-            href="/recordings/record"
-            label="Запись с микрофона"
-          />
+          <div className="relative h-full w-[260px] max-w-[80%] overflow-y-auto">
+            <div className="flex justify-end bg-black px-4 py-3">
+              <button
+                onClick={() => setDrawer(false)}
+                className="text-[20px] text-muted"
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
+            </div>
+            <Sidebar isAdmin={isAdmin} mobile onNav={() => setDrawer(false)} />
+          </div>
+        </div>
+      )}
 
-          {isAdmin && (
-            <>
-              <NavLink
-                component={Link}
-                href="/recordings/upload"
-                label="Загрузить запись"
-              />
-
-              <Text size="xs" fw={600} c="dimmed" tt="uppercase" px={8} py={4} mt={8}>
-                Администрирование
-              </Text>
-              <NavLink
-                component={Link}
-                href="/admin/users"
-                label="Пользователи"
-              />
-              <NavLink
-                component={Link}
-                href="/admin/managers"
-                label="Менеджеры"
-              />
-              <NavLink
-                component={Link}
-                href="/admin/scripts"
-                label="Скрипты"
-              />
-              <NavLink
-                component={Link}
-                href="/admin/summary"
-                label="Дневная сводка"
-              />
-              <NavLink
-                component={Link}
-                href="/admin/settings"
-                label="Настройки"
-              />
-            </>
-          )}
-        </Stack>
-      </AppShell.Navbar>
-
-      <AppShell.Main>{children}</AppShell.Main>
-    </AppShell>
+      <Toaster />
+    </div>
   );
 }

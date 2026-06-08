@@ -1,12 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { MantineProvider } from "@mantine/core";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { renderUI } from "./render";
 import LoginPage from "@/app/(auth)/login/page";
 import { storeToken, getToken, clearToken } from "@/lib/auth";
-
-function renderWithMantine(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
-}
 
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -20,7 +16,7 @@ beforeEach(() => {
 
 describe("Login page", () => {
   it("renders login form", () => {
-    renderWithMantine(<LoginPage />);
+    renderUI(<LoginPage />);
     expect(screen.getByRole("textbox", { name: /логин/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/пароль/i)).toBeInTheDocument();
   });
@@ -31,7 +27,7 @@ describe("Login page", () => {
       json: async () => ({ access_token: "tok123", token_type: "bearer" }),
     });
 
-    renderWithMantine(<LoginPage />);
+    renderUI(<LoginPage />);
     fireEvent.change(screen.getByRole("textbox", { name: /логин/i }), {
       target: { value: "admin" },
     });
@@ -40,7 +36,7 @@ describe("Login page", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /войти/i }));
 
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/recordings"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/dashboard"));
     expect(getToken()).toBe("tok123");
   });
 
@@ -50,7 +46,7 @@ describe("Login page", () => {
       json: async () => ({ detail: "Invalid credentials" }),
     });
 
-    renderWithMantine(<LoginPage />);
+    renderUI(<LoginPage />);
     fireEvent.change(screen.getByRole("textbox", { name: /логин/i }), {
       target: { value: "admin" },
     });

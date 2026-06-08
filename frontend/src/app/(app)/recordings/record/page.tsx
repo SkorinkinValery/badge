@@ -2,37 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Alert,
-  Badge,
-  Box,
-  Button,
-  Checkbox,
-  Container,
-  Group,
-  Loader,
-  Select,
-  Stack,
-  Text,
-  Textarea,
-  Title,
-} from "@mantine/core";
 import { authHeaders } from "@/lib/auth";
 import { useRecordWs } from "@/lib/ws";
-
-interface Manager {
-  id: string;
-  full_name: string;
-  position: string;
-  is_active: boolean;
-}
+import type { Manager } from "@/lib/types";
+import { Page } from "@/components/app-shell/Page";
+import { Button, Field, HexMotif, Panel, StatusBadge, Waveform, inputClass } from "@/components/ui";
 
 export default function RecordPage() {
   const router = useRouter();
   const [managers, setManagers] = useState<Manager[]>([]);
-  const [managerId, setManagerId] = useState<string | null>(null);
+  const [managerId, setManagerId] = useState("");
   const [consentFlag, setConsentFlag] = useState(false);
   const [recordingId, setRecordingId] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
     fetch("/api/managers", { headers: authHeaders() })
@@ -46,9 +28,7 @@ export default function RecordPage() {
     consentFlag,
     onRecordingCreated: (rid) => setRecordingId(rid),
     onFinalTranscript: () => {
-      if (recordingId) {
-        router.push(`/recordings/${recordingId}`);
-      }
+      if (recordingId) router.push(`/recordings/${recordingId}`);
     },
   });
 
@@ -56,87 +36,133 @@ export default function RecordPage() {
   const isStopping = state === "stopping";
   const canStart = consentFlag && !!managerId && state === "idle";
 
-  const managerOptions = managers
-    .filter((m) => m.is_active)
-    .map((m) => ({ value: m.id, label: `${m.full_name} (${m.position})` }));
+  useEffect(() => {
+    if (!isRecording) {
+      setElapsed(0);
+      return;
+    }
+    const id = setInterval(() => setElapsed((x) => x + 1), 1000);
+    return () => clearInterval(id);
+  }, [isRecording]);
+
+  const activeManagers = managers.filter((m) => m.is_active);
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
 
   return (
-    <Container size="sm" py="xl">
-      <Title order={2} mb="md">
-        Запись звонка с микрофона
-      </Title>
-
-      <Stack gap="md">
-        <Select
-          label="Менеджер"
-          placeholder="Выберите менеджера"
-          data={managerOptions}
-          value={managerId}
-          onChange={setManagerId}
-          disabled={isRecording || isStopping}
-        />
-
-        <Checkbox
-          label="Согласие клиента на запись (consent_flag)"
-          checked={consentFlag}
-          onChange={(e) => setConsentFlag(e.currentTarget.checked)}
-          disabled={isRecording || isStopping}
-        />
-
-        {errorMessage && (
-          <Alert color="red" title="Ошибка">
-            {errorMessage}
-          </Alert>
-        )}
-
-        <Group>
-          {!isRecording && !isStopping && (
-            <Button
-              color="red"
-              disabled={!canStart}
-              onClick={() => void start()}
+    <Page title="Запись с микрофона" kicker="Студия">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.2fr_1fr]">
+        {/* studio panel */}
+        <div className="flex flex-col gap-6 border border-border-2 bg-black px-7 py-[30px]">
+          <div className="flex items-center justify-between">
+            <span
+              className="mono text-[11px] uppercase tracking-[.1em]"
+              style={{ color: isRecording ? "var(--accent)" : "var(--muted)" }}
             >
-              Начать запись
-            </Button>
-          )}
+              {isRecording ? "● ИДЁТ ЗАПИСЬ" : "○ ГОТОВ К ЗАПИСИ"}
+            </span>
+            <span
+              className="num"
+              style={{ fontSize: 30, color: isRecording ? "var(--text)" : "var(--muted-2)" }}
+            >
+              {mm}:{ss}
+            </span>
+          </div>
 
-          {isRecording && (
-            <>
-              <Badge color="red" size="lg">
-                Запись идёт
-              </Badge>
-              <Button variant="outline" onClick={stop}>
-                Остановить запись
-              </Button>
-            </>
-          )}
+          <Waveform active={isRecording} />
 
-          {isStopping && (
-            <Group>
-              <Loader size="sm" />
-              <Text>Завершение записи…</Text>
-            </Group>
-          )}
-        </Group>
+          <Field label="Менеджер" required>
+            <select
+              className={inputClass}
+              value={managerId}
+              onChange={(e) => setManagerId(e.target.value)}
+              disabled={isRecording || isStopping}
+            >
+              <option value="">Выберите менеджера</option>
+              {activeManagers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.full_name} ({m.position})
+                </option>
+              ))}
+            </select>
+          </Field>
 
-        {transcript && (
-          <Box>
-            <Text fw={500} mb={4}>
-              Транскрипт (real-time):
-            </Text>
-            <Textarea
-              value={transcript}
-              readOnly
-              minRows={4}
-              autosize
+          <label
+            className="flex cursor-pointer items-start gap-[11px] text-[13px] text-muted"
+            style={{ opacity: isRecording ? 0.5 : 1 }}
+          >
+            <input
+              type="checkbox"
+              checked={consentFlag}
+              onChange={(e) => setConsentFlag(e.target.checked)}
+              disabled={isRecording || isStopping}
+              className="mt-[2px] flex-none accent-accent"
             />
-          </Box>
-        )}
+            <span>
+              Я уведомил собеседника о записи разговора и получил согласие в соответствии с
+              политикой компании.
+            </span>
+          </label>
 
-        {state === "done" && !recordingId && (
-          <Alert color="green">Запись завершена. Обработка…</Alert>
-        )}
-      </Stack>
-    </Container>
+          {errorMessage && (
+            <div role="alert" className="border border-danger/40 bg-danger/[0.08] px-[13px] py-[10px] text-[12.5px] text-danger">
+              {errorMessage}
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            {!isRecording && !isStopping && (
+              <Button full disabled={!canStart} onClick={() => void start()}>
+                ● Начать запись
+              </Button>
+            )}
+            {isRecording && (
+              <Button variant="solid" full onClick={stop}>
+                ■ Остановить запись
+              </Button>
+            )}
+            {isStopping && (
+              <div className="mono w-full py-2 text-center text-[13px] text-muted">
+                Останавливаем и расшифровываем…
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* transcript (produced once after the recording stops) */}
+        <Panel
+          title="Транскрипт"
+          pad={0}
+          right={
+            isStopping ? (
+              <StatusBadge status="transcribing" />
+            ) : isRecording ? (
+              <span className="mono text-[10.5px] text-muted-2">запись идёт…</span>
+            ) : (
+              <span className="mono text-[10.5px] text-muted-2">ожидание</span>
+            )
+          }
+        >
+          <div className="max-h-[480px] min-h-[360px] overflow-y-auto">
+            {transcript ? (
+              <div className="px-5 py-[14px] text-[13.5px] leading-relaxed">{transcript}</div>
+            ) : isStopping ? (
+              <div className="flex h-[360px] flex-col items-center justify-center gap-[14px]">
+                <HexMotif size={80} />
+                <span className="mono text-[12px] text-muted-2">Расшифровываем запись…</span>
+              </div>
+            ) : (
+              <div className="flex h-[360px] flex-col items-center justify-center gap-[14px] px-6 text-center">
+                <HexMotif size={80} />
+                <span className="mono text-[12px] text-muted-2">Транскрипт появится здесь</span>
+                <span className="text-[12px] text-muted-2">
+                  Расшифровка формируется после остановки записи.
+                </span>
+              </div>
+            )}
+          </div>
+        </Panel>
+      </div>
+    </Page>
   );
 }

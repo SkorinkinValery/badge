@@ -1,48 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  Badge,
-  Card,
-  Container,
-  Grid,
-  Group,
-  Select,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
 import { authHeaders } from "@/lib/auth";
-
-interface Manager {
-  id: string;
-  full_name: string;
-  position: string;
-  is_active: boolean;
-  device_id: string | null;
-  default_script_id: string | null;
-}
-
-interface KpiStat {
-  kpi_id: string;
-  label: string;
-  fulfilled_pct: number;
-}
-
-interface Summary {
-  manager_id: string;
-  date: string;
-  total_recordings: number;
-  total_duration_s: number;
-  avg_duration_s: number;
-  avg_score: number | null;
-  kpi_stats: KpiStat[];
-  violations: string[];
-  top_issues: string[];
-}
+import { useIsAdmin } from "@/lib/use-admin";
+import type { DailySummary, Manager } from "@/lib/types";
+import { Page } from "@/components/app-shell/Page";
+import { Forbidden } from "@/components/system";
+import { Field, Panel, ScaleBar, StatCallout, inputClass } from "@/components/ui";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -51,15 +15,15 @@ function formatDuration(seconds: number): string {
 }
 
 export default function SummaryPage() {
+  const admin = useIsAdmin();
   const [managers, setManagers] = useState<Manager[]>([]);
-  const [managerId, setManagerId] = useState<string | null>(null);
-  const [date, setDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
-  const [summary, setSummary] = useState<Summary | null>(null);
+  const [managerId, setManagerId] = useState("");
+  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [summary, setSummary] = useState<DailySummary | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    if (!admin) return;
     fetch("/api/managers", { headers: authHeaders() })
       .then((r) => r.json())
       .then((data: Manager[]) => {
@@ -67,120 +31,98 @@ export default function SummaryPage() {
         if (data.length > 0) setManagerId(data[0].id);
         setLoaded(true);
       });
-  }, []);
+  }, [admin]);
 
   useEffect(() => {
     if (!managerId || !date) return;
     const params = new URLSearchParams({ manager_id: managerId, date });
     fetch(`/api/admin/summary?${params}`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then((data) => setSummary(data as Summary));
+      .then((data) => setSummary(data as DailySummary));
   }, [managerId, date]);
 
-  if (!loaded) return null;
-
-  const managerOptions = managers.map((m) => ({
-    value: m.id,
-    label: m.full_name,
-  }));
+  if (admin === false) return <Forbidden />;
+  if (!loaded) return <Page title="Дневная сводка" kicker="Администрирование">{null}</Page>;
 
   return (
-    <Container mt={40}>
-      <Title order={2} mb="md">Дневная сводка</Title>
-
-      <Group mb="lg" align="flex-end">
-        <Select
-          label="Менеджер"
-          placeholder="Выберите менеджера"
-          data={managerOptions}
-          value={managerId}
-          onChange={setManagerId}
-          style={{ minWidth: 260 }}
-        />
-        <TextInput
-          label="Дата"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.currentTarget.value)}
-        />
-      </Group>
+    <Page wide title="Дневная сводка" kicker="Администрирование">
+      <div className="mb-6 flex flex-wrap items-end gap-4">
+        <div className="w-[260px]">
+          <Field label="Менеджер">
+            <select className={inputClass} value={managerId} onChange={(e) => setManagerId(e.target.value)}>
+              {managers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.full_name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+        <div className="w-[180px]">
+          <Field label="Дата">
+            <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+        </div>
+      </div>
 
       {summary && (
-        <Stack gap="md">
-          <SimpleGrid cols={4}>
-            <Card withBorder>
-              <Text size="sm" c="dimmed">Звонков</Text>
-              <Text fw={700} size="xl">{summary.total_recordings}</Text>
-            </Card>
-            <Card withBorder>
-              <Text size="sm" c="dimmed">Общая длительность</Text>
-              <Text fw={700} size="xl">{formatDuration(summary.total_duration_s)}</Text>
-            </Card>
-            <Card withBorder>
-              <Text size="sm" c="dimmed">Средняя длительность</Text>
-              <Text fw={700} size="xl">{formatDuration(summary.avg_duration_s)}</Text>
-            </Card>
-            <Card withBorder>
-              <Text size="sm" c="dimmed">Средний балл</Text>
-              <Text fw={700} size="xl">
-                {summary.avg_score !== null ? `${summary.avg_score.toFixed(1)}%` : "—"}
-              </Text>
-            </Card>
-          </SimpleGrid>
+        <>
+          <div className="mb-6 grid grid-cols-2 gap-[14px] lg:grid-cols-4">
+            <StatCallout label="Звонков" value={summary.total_recordings} sub="за день" />
+            <StatCallout label="Общая длит." value={formatDuration(summary.total_duration_s)} />
+            <StatCallout label="Ср. длит." value={formatDuration(summary.avg_duration_s)} />
+            <StatCallout
+              label="Ср. балл"
+              value={summary.avg_score !== null ? `${summary.avg_score.toFixed(1)}%` : "—"}
+              accent
+            />
+          </div>
+
+          {summary.total_recordings === 0 && (
+            <p className="text-muted">Нет данных за выбранный день.</p>
+          )}
 
           {summary.kpi_stats.length > 0 && (
-            <Card withBorder>
-              <Title order={4} mb="sm">Выполнение KPI</Title>
-              <Table>
-                <thead>
-                  <tr>
-                    <th>Показатель</th>
-                    <th>% выполнения</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.kpi_stats.map((k) => (
-                    <tr key={k.kpi_id}>
-                      <td>{k.label}</td>
-                      <td>
-                        <Badge color={k.fulfilled_pct >= 70 ? "green" : k.fulfilled_pct >= 40 ? "yellow" : "red"}>
-                          {k.fulfilled_pct.toFixed(0)}%
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-            </Card>
+            <Panel title="Выполнение KPI" className="mb-6">
+              <div className="flex flex-col">
+                {summary.kpi_stats.map((k) => (
+                  <div key={k.kpi_id} className="border-b border-border py-[14px]">
+                    <div className="mb-[9px] flex justify-between gap-3">
+                      <span className="text-[13.5px]">{k.label}</span>
+                      <span className="num text-[15px]">{k.fulfilled_pct.toFixed(0)}%</span>
+                    </div>
+                    <ScaleBar v={Math.round(k.fulfilled_pct / 10)} max={10} />
+                  </div>
+                ))}
+              </div>
+            </Panel>
           )}
 
           {summary.violations.length > 0 && (
-            <Card withBorder>
-              <Title order={4} mb="sm">Нарушения регламента</Title>
-              <Group gap="xs">
+            <Panel title="Нарушения регламента" className="mb-6">
+              <div className="flex flex-wrap gap-2">
                 {summary.violations.map((v) => (
-                  <Badge key={v} color="red">{v}</Badge>
+                  <span key={v} className="mono border border-danger/40 px-[9px] py-1 text-[11px] text-danger">
+                    {v}
+                  </span>
                 ))}
-              </Group>
-            </Card>
+              </div>
+            </Panel>
           )}
 
           {summary.top_issues.length > 0 && (
-            <Card withBorder>
-              <Title order={4} mb="sm">Топ проблемных пунктов</Title>
-              <Stack gap="xs">
+            <Panel title="Топ проблемных пунктов">
+              <ol className="flex flex-col gap-2">
                 {summary.top_issues.map((issue, i) => (
-                  <Text key={i} size="sm">{i + 1}. {issue}</Text>
+                  <li key={i} className="text-[13px] text-muted">
+                    {i + 1}. {issue}
+                  </li>
                 ))}
-              </Stack>
-            </Card>
+              </ol>
+            </Panel>
           )}
-        </Stack>
+        </>
       )}
-
-      {summary && summary.total_recordings === 0 && (
-        <Text c="dimmed" mt="md">Нет данных за выбранный день</Text>
-      )}
-    </Container>
+    </Page>
   );
 }

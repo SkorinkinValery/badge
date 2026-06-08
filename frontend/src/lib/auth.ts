@@ -22,15 +22,29 @@ export function authHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export function getRole(): string | null {
+function decodeClaims(): Record<string, unknown> | null {
   try {
     const token = getToken();
     if (!token) return null;
     const parts = token.split(".");
     if (parts.length !== 3) return null;
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
-    return typeof payload?.role === "string" ? payload.role : null;
+    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
   } catch {
     return null;
   }
+}
+
+export function getRole(): string | null {
+  const role = decodeClaims()?.role;
+  return typeof role === "string" ? role : null;
+}
+
+/** Logged-in user's login (JWT `sub` claim). */
+export function getLogin(): string | null {
+  const sub = decodeClaims()?.sub;
+  return typeof sub === "string" ? sub : null;
+}
+
+export function isAdmin(): boolean {
+  return getRole() === "admin";
 }

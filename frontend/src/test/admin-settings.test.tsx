@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { renderUI } from "./render";
 import userEvent from "@testing-library/user-event";
-import { MantineProvider } from "@mantine/core";
 import SettingsPage from "@/app/(app)/admin/settings/page";
 
 vi.mock("@/lib/auth", () => ({
   getToken: () => "admin-token",
   authHeaders: () => ({ Authorization: "Bearer admin-token" }),
+  isAdmin: () => true,
   storeToken: vi.fn(),
   clearToken: vi.fn(),
 }));
@@ -14,7 +15,7 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 function wrap(ui: React.ReactElement) {
-  return render(<MantineProvider>{ui}</MantineProvider>);
+  return renderUI(ui);
 }
 
 const SAMPLE_SETTINGS = {

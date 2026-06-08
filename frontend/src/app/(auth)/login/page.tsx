@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Container, PasswordInput, Stack, TextInput, Title } from "@mantine/core";
 import { storeToken } from "@/lib/auth";
+import { Button, Field, HexLogo, HexMotif, Kicker, PixelH, inputClass } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,7 +26,7 @@ export default function LoginPage() {
       const body = await resp.json();
       if (!resp.ok) throw new Error(body?.detail ?? "Ошибка входа");
       storeToken(body.access_token as string);
-      router.push("/recordings");
+      router.push("/dashboard");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -35,32 +35,58 @@ export default function LoginPage() {
   }
 
   return (
-    <Container size={400} mt={100}>
-      <Title order={2} mb="md">Вход</Title>
-      <form onSubmit={handleSubmit}>
-        <Stack>
+    <div className="gridlines flex min-h-screen items-center justify-center bg-bg p-6">
+      <div className="absolute left-7 top-6 flex items-center gap-[11px]">
+        <HexLogo size={24} />
+        <span className="disp text-[23px]">Аудиобейдж</span>
+      </div>
+
+      <div className="w-[404px] max-w-full">
+        <div className="mb-[26px] flex justify-center">
+          <HexMotif size={92} />
+        </div>
+        <div className="mb-[10px] flex justify-center">
+          <Kicker>AI-анализ звонков</Kicker>
+        </div>
+        <PixelH size={34} className="mb-[30px] text-center">
+          Вход в систему
+        </PixelH>
+
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-[18px] border border-border-2 bg-surface px-[26px] py-7"
+        >
           {error && (
-            <Alert role="alert" color="red" title="Ошибка">
+            <div
+              role="alert"
+              className="border border-danger/40 bg-danger/[0.08] px-[13px] py-[10px] text-[12.5px] text-danger"
+            >
               {error}
-            </Alert>
+            </div>
           )}
-          <TextInput
-            label="Логин"
-            value={login}
-            onChange={(e) => setLogin(e.target.value)}
-            required
-          />
-          <PasswordInput
-            label="Пароль"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <Button type="submit" loading={loading}>
-            Войти
+          <Field label="Логин" required>
+            <input
+              className={inputClass}
+              type="text"
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
+              autoComplete="username"
+            />
+          </Field>
+          <Field label="Пароль" required>
+            <input
+              className={inputClass}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </Field>
+          <Button type="submit" full disabled={loading}>
+            {loading ? "Вход…" : "Войти →"}
           </Button>
-        </Stack>
-      </form>
-    </Container>
+        </form>
+      </div>
+    </div>
   );
 }
