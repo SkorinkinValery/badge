@@ -83,17 +83,42 @@ export default function SummaryPage() {
           )}
 
           {summary.kpi_stats.length > 0 && (
-            <Panel title="Выполнение KPI" className="mb-6">
+            <Panel
+              title="Выполнение KPI"
+              className="mb-6"
+              right={<span className="mono text-[10px] text-muted-2">средняя оценка звонков</span>}
+            >
               <div className="flex flex-col">
-                {summary.kpi_stats.map((k) => (
-                  <div key={k.kpi_id} className="border-b border-border py-[14px]">
-                    <div className="mb-[9px] flex justify-between gap-3">
-                      <span className="text-[13.5px]">{k.label}</span>
-                      <span className="num text-[15px]">{k.fulfilled_pct.toFixed(0)}%</span>
+                {summary.kpi_stats.map((k) => {
+                  const isFact = k.kpi_type === "fact";
+                  return (
+                    <div key={k.kpi_id} className="border-b border-border py-[14px]">
+                      <div className="mb-[9px] flex justify-between gap-3">
+                        <span className="text-[13.5px]">{k.label}</span>
+                        {isFact && (
+                          <span
+                            className="mono text-[13px] font-bold"
+                            style={{
+                              color:
+                                k.avg_value >= 10
+                                  ? "var(--success)"
+                                  : k.avg_value <= 0
+                                    ? "var(--danger)"
+                                    : "var(--neutral)",
+                            }}
+                          >
+                            {k.avg_value >= 10
+                              ? "✓ ДА"
+                              : k.avg_value <= 0
+                                ? "✗ НЕТ"
+                                : `${Math.round((k.avg_value / 10) * 100)}% да`}
+                          </span>
+                        )}
+                      </div>
+                      {!isFact && <ScaleBar v={Math.round(k.avg_value * 10) / 10} max={10} />}
                     </div>
-                    <ScaleBar v={Math.round(k.fulfilled_pct / 10)} max={10} />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </Panel>
           )}
@@ -111,7 +136,7 @@ export default function SummaryPage() {
           )}
 
           {summary.top_issues.length > 0 && (
-            <Panel title="Топ проблемных пунктов">
+            <Panel title="Проблемные места">
               <ol className="flex flex-col gap-2">
                 {summary.top_issues.map((issue, i) => (
                   <li key={i} className="text-[13px] text-muted">

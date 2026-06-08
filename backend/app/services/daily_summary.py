@@ -14,12 +14,18 @@ from app.config.kpi import KpiConfig, load_kpi_config
 from app.db.models.analysis import AnalysisModel
 from app.db.models.recording import RecordingModel
 
+# A KPI is flagged as a problem area when its average score is below this bar
+# (0-10 scale; for fact-KPIs the value is 10 when fulfilled, 0 otherwise).
+_PROBLEM_BELOW = 7.0
+
 
 @dataclass
 class KpiStat:
     kpi_id: str
     label: str
-    fulfilled_pct: float
+    kpi_type: str  # "scale" | "fact"
+    avg_value: float  # mean KPI score across the day's calls (0-10)
+    fulfilled_pct: float  # % of calls meeting the bar (kept for reference)
 
 
 @dataclass
@@ -103,6 +109,7 @@ def aggregate_summary_with_kpi(
 
     kpi_fulfilled: dict[str, int] = {kpi.id: 0 for kpi in kpi_cfg.kpis}
     kpi_total: dict[str, int] = {kpi.id: 0 for kpi in kpi_cfg.kpis}
+    kpi_sum: dict[str, float] = {kpi.id: 0.0 for kpi in kpi_cfg.kpis}
 
     violations_set: set[str] = set()
     kpi_by_id = {k.id: k for k in kpi_cfg.kpis}
@@ -120,6 +127,7 @@ def aggregate_summary_with_kpi(
             if val is None:
                 continue
             kpi_total[kpi_id] += 1
+            kpi_sum[kpi_id] += val
             if kpi_item.type == "fact":
                 if val >= 10.0:
                     kpi_fulfilled[kpi_id] += 1
@@ -134,11 +142,21 @@ def aggregate_summary_with_kpi(
         tot = kpi_total[kpi_item.id]
         if tot == 0:
             continue
-        pct = kpi_fulfilled[kpi_item.id] / tot * 100.0
-        stats.append(KpiStat(kpi_id=kpi_item.id, label=kpi_item.label, fulfilled_pct=pct))
+        stats.append(
+            KpiStat(
+                kpi_id=kpi_item.id,
+                label=kpi_item.label,
+                kpi_type=kpi_item.type,
+                avg_value=kpi_sum[kpi_item.id] / tot,
+                fulfilled_pct=kpi_fulfilled[kpi_item.id] / tot * 100.0,
+            )
+        )
 
-    stats_sorted = sorted(stats, key=lambda s: s.fulfilled_pct)
-    top_issues = [s.label for s in stats_sorted[:3]]
+    # Problem areas = weakest KPIs (lowest average score) below the "good" bar.
+    issues_sorted = sorted(
+        (s for s in stats if s.avg_value < _PROBLEM_BELOW), key=lambda s: s.avg_value
+    )
+    top_issues = [s.label for s in issues_sorted[:3]]
 
     return DailySummary(
         manager_id=manager_id,

@@ -21,6 +21,8 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 class KpiStatOut(BaseModel):
     kpi_id: str
     label: str
+    kpi_type: str
+    avg_value: float
     fulfilled_pct: float
 
 
@@ -45,7 +47,13 @@ def _to_out(s: DailySummary) -> DailySummaryOut:
         avg_duration_s=s.avg_duration_s,
         avg_score=s.avg_score,
         kpi_stats=[
-            KpiStatOut(kpi_id=k.kpi_id, label=k.label, fulfilled_pct=k.fulfilled_pct)
+            KpiStatOut(
+                kpi_id=k.kpi_id,
+                label=k.label,
+                kpi_type=k.kpi_type,
+                avg_value=k.avg_value,
+                fulfilled_pct=k.fulfilled_pct,
+            )
             for k in s.kpi_stats
         ],
         violations=s.violations,

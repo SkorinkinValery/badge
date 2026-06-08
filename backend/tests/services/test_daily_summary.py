@@ -200,3 +200,58 @@ def test_top_issues_sorted_by_lowest_pct() -> None:
     result = aggregate_summary_with_kpi([rec], [ana], manager_id, date.today(), kpi_cfg)
 
     assert result.top_issues[0] in ("KPI B", "KPI C")
+
+
+def test_kpi_stats_report_average_score_and_problem_areas() -> None:
+    """kpi_stats carry the average score (0-10); problem areas = weak KPIs (avg < 7)."""
+    from app.config.kpi import KpiConfig, KpiItem
+    from app.services.daily_summary import aggregate_summary_with_kpi
+
+    manager_id = uuid.uuid4()
+    rec = _make_recording(manager_id)
+    kpi_json = {
+        "a": {"kpi_type": "scale", "value": 8.0, "quote": "", "comment": ""},  # good
+        "b": {"kpi_type": "scale", "value": 5.0, "quote": "", "comment": ""},  # weak
+        "c": {"kpi_type": "fact", "value": 10.0, "quote": "", "comment": ""},  # fulfilled
+    }
+    ana = _make_analysis(rec.id, score=67.0, kpi_json=kpi_json)  # type: ignore[union-attr]
+
+    kpi_cfg = KpiConfig(
+        kpis=[
+            KpiItem(id="a", label="KPI A", type="scale", weight=1.0, anchors=[], applies_to="baseline", include_in_score=True),
+            KpiItem(id="b", label="KPI B", type="scale", weight=1.0, anchors=[], applies_to="baseline", include_in_score=True),
+            KpiItem(id="c", label="KPI C", type="fact", weight=1.0, anchors=[], applies_to="baseline", include_in_score=True),
+        ]
+    )
+
+    result = aggregate_summary_with_kpi([rec], [ana], manager_id, date.today(), kpi_cfg)
+
+    by_id = {s.kpi_id: s for s in result.kpi_stats}
+    assert by_id["a"].avg_value == 8.0 and by_id["a"].kpi_type == "scale"
+    assert by_id["b"].avg_value == 5.0
+    assert by_id["c"].avg_value == 10.0 and by_id["c"].kpi_type == "fact"
+    # only the weak KPI (avg < 7) is flagged as a problem area
+    assert result.top_issues == ["KPI B"]
+
+
+def test_no_problem_areas_when_all_kpis_strong() -> None:
+    from app.config.kpi import KpiConfig, KpiItem
+    from app.services.daily_summary import aggregate_summary_with_kpi
+
+    manager_id = uuid.uuid4()
+    rec = _make_recording(manager_id)
+    kpi_json = {
+        "a": {"kpi_type": "scale", "value": 8.0, "quote": "", "comment": ""},
+        "b": {"kpi_type": "scale", "value": 7.0, "quote": "", "comment": ""},
+        "c": {"kpi_type": "fact", "value": 10.0, "quote": "", "comment": ""},
+    }
+    ana = _make_analysis(rec.id, score=90.0, kpi_json=kpi_json)  # type: ignore[union-attr]
+    kpi_cfg = KpiConfig(
+        kpis=[
+            KpiItem(id="a", label="KPI A", type="scale", weight=1.0, anchors=[], applies_to="baseline", include_in_score=True),
+            KpiItem(id="b", label="KPI B", type="scale", weight=1.0, anchors=[], applies_to="baseline", include_in_score=True),
+            KpiItem(id="c", label="KPI C", type="fact", weight=1.0, anchors=[], applies_to="baseline", include_in_score=True),
+        ]
+    )
+    result = aggregate_summary_with_kpi([rec], [ana], manager_id, date.today(), kpi_cfg)
+    assert result.top_issues == []

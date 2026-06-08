@@ -90,7 +90,7 @@ kpis:
       - "10: замер предложен клиенту"
 
   - id: closing
-    label: Завершение сделки / next step
+    label: Завершение сделки
     type: scale
     weight: 1.5
     applies_to: baseline

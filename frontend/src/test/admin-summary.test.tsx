@@ -29,8 +29,8 @@ const SAMPLE_SUMMARY = {
   avg_duration_s: 360.0,
   avg_score: 78.5,
   kpi_stats: [
-    { kpi_id: "greeting", label: "Приветствие", fulfilled_pct: 80.0 },
-    { kpi_id: "cta", label: "CTA", fulfilled_pct: 60.0 },
+    { kpi_id: "greeting", label: "Приветствие", kpi_type: "scale", avg_value: 8.0, fulfilled_pct: 80.0 },
+    { kpi_id: "cta", label: "CTA", kpi_type: "fact", avg_value: 0.0, fulfilled_pct: 60.0 },
   ],
   violations: ["CTA"],
   top_issues: ["CTA", "Приветствие"],

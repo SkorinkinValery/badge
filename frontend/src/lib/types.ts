@@ -80,6 +80,8 @@ export interface User {
 export interface KpiStat {
   kpi_id: string;
   label: string;
+  kpi_type: "scale" | "fact";
+  avg_value: number;
   fulfilled_pct: number;
 }
 export interface DailySummary {
