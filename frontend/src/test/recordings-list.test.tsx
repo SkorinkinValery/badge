@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderUI } from "./render";
 import RecordingsPage from "@/app/(app)/recordings/page";
 
@@ -36,6 +36,7 @@ function mockFetch(recordings: unknown[]) {
 beforeEach(() => {
   mockPush.mockClear();
   mockFetch(SAMPLE_RECORDINGS);
+  window.history.pushState({}, "", "/recordings");
 });
 
 describe("Recordings list page", () => {
@@ -53,12 +54,52 @@ describe("Recordings list page", () => {
 
   it("joins manager names from /api/managers", async () => {
     renderUI(<RecordingsPage />);
-    await waitFor(() => expect(screen.getByText("Иван Иванов")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("cell", { name: "Иван Иванов" })).toBeInTheDocument());
   });
 
   it("shows empty state when no recordings", async () => {
     mockFetch([]);
     renderUI(<RecordingsPage />);
     await waitFor(() => expect(screen.getByText(/Записей пока нет/i)).toBeInTheDocument());
+  });
+
+  it("filters recordings by date", async () => {
+    renderUI(<RecordingsPage />);
+    await waitFor(() => expect(screen.getByRole("cell", { name: "Иван Иванов" })).toBeInTheDocument());
+    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+
+    // a date with no recordings → nothing found
+    fireEvent.change(dateInput, { target: { value: "2026-01-01" } });
+    await waitFor(() => expect(screen.getByText(/Ничего не найдено/i)).toBeInTheDocument());
+
+    // the matching date → rows are back
+    fireEvent.change(dateInput, { target: { value: "2026-06-05" } });
+    await waitFor(() => expect(screen.getByRole("cell", { name: "Иван Иванов" })).toBeInTheDocument());
+  });
+
+  it("filters recordings by manager", async () => {
+    renderUI(<RecordingsPage />);
+    // all three recordings present (header + 3 rows)
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(4));
+    const mgrSelect = screen.getByRole("combobox") as HTMLSelectElement;
+
+    // pick Иван Иванов (mgr-1) → only his recording remains (header + 1)
+    fireEvent.change(mgrSelect, { target: { value: "mgr-1" } });
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(2));
+    expect(screen.getByRole("cell", { name: "Иван Иванов" })).toBeInTheDocument();
+
+    // back to all managers → all recordings again
+    fireEvent.change(mgrSelect, { target: { value: "" } });
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(4));
+  });
+
+  it("pre-applies manager + date filters from the URL query", async () => {
+    window.history.pushState({}, "", "/recordings?manager=mgr-1&date=2026-06-05");
+    renderUI(<RecordingsPage />);
+    // only mgr-1's recording on that date remains (header + 1)
+    await waitFor(() => expect(screen.getAllByRole("row")).toHaveLength(2));
+    expect(screen.getByRole("cell", { name: "Иван Иванов" })).toBeInTheDocument();
+    const mgrSelect = screen.getByRole("combobox") as HTMLSelectElement;
+    expect(mgrSelect.value).toBe("mgr-1");
   });
 });

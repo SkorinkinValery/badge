@@ -6,7 +6,7 @@ import { authHeaders } from "@/lib/auth";
 import { useRecordWs } from "@/lib/ws";
 import type { Manager } from "@/lib/types";
 import { Page } from "@/components/app-shell/Page";
-import { Button, Field, HexMotif, Panel, StatusBadge, Waveform, inputClass } from "@/components/ui";
+import { Button, Field, Waveform, inputClass } from "@/components/ui";
 
 export default function RecordPage() {
   const router = useRouter();
@@ -23,18 +23,25 @@ export default function RecordPage() {
       .catch(() => {});
   }, []);
 
-  const { state, transcript, start, stop, errorMessage } = useRecordWs({
+  const { state, start, stop, errorMessage } = useRecordWs({
     managerId: managerId ?? "",
     consentFlag,
     onRecordingCreated: (rid) => setRecordingId(rid),
-    onFinalTranscript: () => {
-      if (recordingId) router.push(`/recordings/${recordingId}`);
-    },
   });
 
   const isRecording = state === "recording";
   const isStopping = state === "stopping";
   const canStart = consentFlag && !!managerId && state === "idle";
+
+  // Once the recording is created (ack) and the session reaches a terminal
+  // "done" state (final transcript or WS close), jump to the pipeline view —
+  // same flow as after a file upload. Using an effect (not the WS callback)
+  // avoids the stale-closure on recordingId captured at start() time.
+  useEffect(() => {
+    if (state === "done" && recordingId) {
+      router.push(`/recordings/${recordingId}`);
+    }
+  }, [state, recordingId, router]);
 
   useEffect(() => {
     if (!isRecording) {
@@ -51,7 +58,7 @@ export default function RecordPage() {
 
   return (
     <Page title="Запись с микрофона" kicker="Студия">
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.2fr_1fr]">
+      <div className="max-w-2xl">
         {/* studio panel */}
         <div className="flex flex-col gap-6 border border-border-2 bg-black px-7 py-[30px]">
           <div className="flex items-center justify-between">
@@ -123,45 +130,16 @@ export default function RecordPage() {
             )}
             {isStopping && (
               <div className="mono w-full py-2 text-center text-[13px] text-muted">
-                Останавливаем и расшифровываем…
+                Запись завершена, открываем анализ…
               </div>
             )}
           </div>
-        </div>
 
-        {/* transcript (produced once after the recording stops) */}
-        <Panel
-          title="Транскрипт"
-          pad={0}
-          right={
-            isStopping ? (
-              <StatusBadge status="transcribing" />
-            ) : isRecording ? (
-              <span className="mono text-[10.5px] text-muted-2">запись идёт…</span>
-            ) : (
-              <span className="mono text-[10.5px] text-muted-2">ожидание</span>
-            )
-          }
-        >
-          <div className="max-h-[480px] min-h-[360px] overflow-y-auto">
-            {transcript ? (
-              <div className="px-5 py-[14px] text-[13.5px] leading-relaxed">{transcript}</div>
-            ) : isStopping ? (
-              <div className="flex h-[360px] flex-col items-center justify-center gap-[14px]">
-                <HexMotif size={80} />
-                <span className="mono text-[12px] text-muted-2">Расшифровываем запись…</span>
-              </div>
-            ) : (
-              <div className="flex h-[360px] flex-col items-center justify-center gap-[14px] px-6 text-center">
-                <HexMotif size={80} />
-                <span className="mono text-[12px] text-muted-2">Транскрипт появится здесь</span>
-                <span className="text-[12px] text-muted-2">
-                  Расшифровка формируется после остановки записи.
-                </span>
-              </div>
-            )}
-          </div>
-        </Panel>
+          <p className="text-center text-[12px] text-muted-2">
+            После остановки запись отправляется на расшифровку и анализ — вы перейдёте на страницу
+            разговора автоматически.
+          </p>
+        </div>
       </div>
     </Page>
   );

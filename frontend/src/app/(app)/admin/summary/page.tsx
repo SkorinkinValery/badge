@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { authHeaders } from "@/lib/auth";
 import { useIsAdmin } from "@/lib/use-admin";
 import type { DailySummary, Manager } from "@/lib/types";
 import { Page } from "@/components/app-shell/Page";
 import { Forbidden } from "@/components/system";
-import { Field, Panel, ScaleBar, StatCallout, inputClass } from "@/components/ui";
+import { Button, DateFilter, ManagerFilter, Panel, ScaleBar, StatCallout } from "@/components/ui";
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -15,6 +16,7 @@ function formatDuration(seconds: number): string {
 }
 
 export default function SummaryPage() {
+  const router = useRouter();
   const admin = useIsAdmin();
   const [managers, setManagers] = useState<Manager[]>([]);
   const [managerId, setManagerId] = useState("");
@@ -45,24 +47,32 @@ export default function SummaryPage() {
   if (!loaded) return <Page title="Дневная сводка" kicker="Администрирование">{null}</Page>;
 
   return (
-    <Page wide title="Дневная сводка" kicker="Администрирование">
+    <Page
+      wide
+      title="Дневная сводка"
+      kicker="Администрирование"
+      actions={
+        <Button
+          sm
+          variant="ghost"
+          disabled={!managerId || !date}
+          onClick={() =>
+            router.push(`/recordings?manager=${encodeURIComponent(managerId)}&date=${encodeURIComponent(date)}`)
+          }
+        >
+          Открыть записи за день →
+        </Button>
+      }
+    >
       <div className="mb-6 flex flex-wrap items-end gap-4">
-        <div className="w-[260px]">
-          <Field label="Менеджер">
-            <select className={inputClass} value={managerId} onChange={(e) => setManagerId(e.target.value)}>
-              {managers.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.full_name}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <div className="w-[180px]">
-          <Field label="Дата">
-            <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-        </div>
+        <ManagerFilter
+          managers={managers}
+          value={managerId}
+          onChange={setManagerId}
+          allowAll={false}
+          className="w-[260px]"
+        />
+        <DateFilter value={date} onChange={setDate} />
       </div>
 
       {summary && (

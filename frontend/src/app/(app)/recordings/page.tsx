@@ -12,7 +12,9 @@ import { cn } from "@/lib/cn";
 import {
   Button,
   DataTable,
+  DateFilter,
   EmptyState,
+  ManagerFilter,
   PageError,
   Skeleton,
   StatusBadge,
@@ -39,9 +41,20 @@ export default function RecordingsPage() {
   const [admin, setAdmin] = useState(false);
   const [q, setQ] = useState("");
   const [st, setSt] = useState("all");
+  const [date, setDate] = useState("");
+  const [mgr, setMgr] = useState("");
   const { data, loading, error, reload } = useFetch(loadData, []);
 
   useEffect(() => setAdmin(isAdmin()), []);
+
+  // Pre-apply filters passed via the URL (e.g. from the daily summary page).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const m = params.get("manager");
+    const d = params.get("date");
+    if (m) setMgr(m);
+    if (d) setDate(d);
+  }, []);
 
   const actions = admin ? (
     <>
@@ -67,18 +80,22 @@ export default function RecordingsPage() {
       (st === "progress" ? LIVE_STATUSES.includes(r.status) || r.status === "queued" : r.status === st);
     const qOk =
       q === "" || mgrName(r.manager_id).toLowerCase().includes(q.toLowerCase()) || r.id.includes(q);
-    return stOk && qOk;
+    const dateOk = date === "" || r.created_at.slice(0, 10) === date;
+    const mgrOk = mgr === "" || r.manager_id === mgr;
+    return stOk && qOk && dateOk && mgrOk;
   });
 
   return (
     <Page title="Записи" kicker={`${all.length} звонков`} actions={actions}>
-      <div className="mb-5 flex flex-wrap items-center gap-3">
+      <div className="mb-5 flex flex-wrap items-end gap-3">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Поиск по менеджеру или ID…"
           className={cn(inputClass, "w-[300px] max-w-full")}
         />
+        <ManagerFilter managers={managers} value={mgr} onChange={setMgr} />
+        <DateFilter value={date} onChange={setDate} />
         <div className="flex border border-border-2">
           {FILTERS.map(([k, l], i) => (
             <button
@@ -122,6 +139,8 @@ export default function RecordingsPage() {
           onCta={() => {
             setQ("");
             setSt("all");
+            setDate("");
+            setMgr("");
           }}
         />
       )}

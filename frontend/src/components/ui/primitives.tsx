@@ -78,6 +78,64 @@ export function Field({
   );
 }
 
+/* ---------- Date filter (reused by recordings + daily summary) ---------- */
+export function DateFilter({
+  value,
+  onChange,
+  label = "Дата",
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("w-[180px]", className)}>
+      <Field label={label}>
+        <input
+          className={inputClass}
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </Field>
+    </div>
+  );
+}
+
+/* ---------- Manager filter (reused by recordings + daily summary) ---------- */
+export function ManagerFilter({
+  managers,
+  value,
+  onChange,
+  allowAll = true,
+  label = "Менеджер",
+  className,
+}: {
+  managers: { id: string; full_name: string }[];
+  value: string;
+  onChange: (value: string) => void;
+  allowAll?: boolean;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("w-[220px]", className)}>
+      <Field label={label}>
+        <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
+          {allowAll && <option value="">Все менеджеры</option>}
+          {managers.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.full_name}
+            </option>
+          ))}
+        </select>
+      </Field>
+    </div>
+  );
+}
+
 /* ---------- Pixel heading + kicker ---------- */
 export function PixelH({
   children,

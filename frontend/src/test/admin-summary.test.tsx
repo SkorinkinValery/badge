@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, fireEvent } from "@testing-library/react";
 import { renderUI } from "./render";
 import SummaryPage from "@/app/(app)/admin/summary/page";
+
+const mockPush = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   getToken: () => "admin-token",
@@ -11,7 +13,7 @@ vi.mock("@/lib/auth", () => ({
   clearToken: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mockPush }) }));
 
 function wrap(ui: React.ReactElement) {
   return renderUI(ui);
@@ -37,6 +39,7 @@ const SAMPLE_SUMMARY = {
 };
 
 beforeEach(() => {
+  mockPush.mockClear();
   global.fetch = vi.fn().mockImplementation((url: string) => {
     if (url.includes("/api/managers")) {
       return Promise.resolve({ ok: true, json: async () => SAMPLE_MANAGERS });
@@ -89,5 +92,14 @@ describe("Daily summary admin page", () => {
     await waitFor(() =>
       expect(screen.getAllByText("CTA").length).toBeGreaterThan(0)
     );
+  });
+
+  it("opens recordings filtered by the selected manager and date", async () => {
+    wrap(<SummaryPage />);
+    const dateInput = await screen.findByLabelText(/дата/i);
+    fireEvent.change(dateInput, { target: { value: "2026-06-06" } });
+    const btn = screen.getByRole("button", { name: /открыть записи за день/i });
+    fireEvent.click(btn);
+    expect(mockPush).toHaveBeenCalledWith("/recordings?manager=mgr-1&date=2026-06-06");
   });
 });
